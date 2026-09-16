@@ -1,1 +1,0 @@
-/Users/esc/Documents/GenshinTools/tools/ppocr-bench/app/src/main/cpp/CMakeLists.txt

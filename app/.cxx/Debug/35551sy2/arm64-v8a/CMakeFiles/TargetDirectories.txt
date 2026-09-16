@@ -1,3 +1,0 @@
-/Users/esc/Documents/GenshinTools/tools/ppocr-bench/app/.cxx/Debug/35551sy2/arm64-v8a/CMakeFiles/ppocr_bench.dir
-/Users/esc/Documents/GenshinTools/tools/ppocr-bench/app/.cxx/Debug/35551sy2/arm64-v8a/CMakeFiles/edit_cache.dir
-/Users/esc/Documents/GenshinTools/tools/ppocr-bench/app/.cxx/Debug/35551sy2/arm64-v8a/CMakeFiles/rebuild_cache.dir

@@ -1,0 +1,78 @@
+name: Build Android APK
+
+# Build the benchmark APK on every push to main (and on tag v* / manually).
+# The engine libraries it links against (lw / onnxruntime / MNN / ncnn-vulkan)
+# live in third_party/stage and ARE committed in this repo, so a plain
+# checkout is buildable with no network fetch of those.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+  tags:
+    - 'v*'
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # AGP 8.7.2 requires JDK 17+; Gradle 8.14.3 supports 17-21.
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      # Provides ANDROID_HOME + sdkmanager on PATH (licenses auto-accepted).
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      # Exact versions pinned in app/build.gradle.kts:
+      #   ndkVersion 27.0.12077973, cmake 3.22.1, compileSdk 35.
+      - name: Install NDK / CMake / platforms
+        run: |
+          sdkmanager --install \
+            "ndk;27.0.12077973" \
+            "cmake;3.22.1" \
+            "platforms;android-35" \
+            "build-tools;34.0.0"
+
+      # Cache Gradle deps + the wrapper distribution across runs.
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('app/gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-
+
+      # Single-module project: app/ is both the root and the app module.
+      # CI has direct internet access to google()/mavenCentral(), so the
+      # local-only mirrors-init.gradle (a DNS-block workaround) is NOT used.
+      - name: Build debug APK
+        working-directory: app
+        run: ./gradlew --no-daemon --stacktrace assembleDebug
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ppocr-bench-debug.apk
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 14
+
+      # On a version tag, publish the APK as a GitHub Release attachment
+      # (matches the repo's "download benchmark-debug.apk from Release" flow).
+      - name: Create GitHub Release (on tag)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: app/build/outputs/apk/debug/*.apk
+          draft: false
+          prerelease: false

@@ -3,8 +3,8 @@
 
 # ---- Android / Gradle build output ----
 app/build/
+app/.cxx/
 app/.gradle/
-.gradle/
 local.properties
 
 # ---- Python venv (bench helper tooling) ----
@@ -12,18 +12,30 @@ local.properties
 __pycache__/
 *.pyc
 
-# ---- third-party build / stage / download caches (large generated artifacts, not source) ----
-third_party/stage/
+# ---- third-party caches + unused build dirs.
+# IMPORTANT: the engine libraries under
+#   third_party/stage/{lw,ort,mnn,ncnn-vulkan}  (lib/ + include/)
+# are REQUIRED by the native build (CMake IMPORTED .so/.a + headers), so they
+# ARE committed and must NOT be ignored. We only exclude:
+#   - download / build caches (_tmp_*, dl/, build-*/)
+#   - legacy `stage/ncnn/` prebuilt (CMake does not reference it)
+#   - `ncnn-vulkan/include-src/` (42MB of unused vendored layer sources)
+#   - the generated pnnx binary + model pack caches
+third_party/stage/_tmp_*/
+third_party/stage/ncnn/
+third_party/stage/ncnn-vulkan/include-src/
 third_party/build-ncnn-android/
 third_party/build-ncnn-host/
 third_party/build-lw-android/
 third_party/dl/
 
-# ---- large native / model binaries that must not enter git history ----
+# ---- APK artifacts (built product, not source) ----
 *.apk
-*.so
-*.a
+
+# ---- large binary download caches that must not enter git history ----
 *.pack
+*.zip
+*/_tmp_pnnx/*
 
 # ---- logs / OS noise ----
 *.log
