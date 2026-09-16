@@ -1,0 +1,258 @@
+# pnnx model stat
+# model inputshape = [1,3,80,160]f32
+# FLOPS = 49.848M
+# memory OPS = 3.059M
+
+import os
+import numpy as np
+import tempfile, zipfile
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+try:
+    import torchvision
+    import torchaudio
+except:
+    pass
+
+class Model(nn.Module):
+    def __init__(self):
+        super(Model, self).__init__()
+
+        self.conv2d_1 = nn.Conv2d(bias=True, dilation=(1,1), groups=1, in_channels=3, kernel_size=(3,3), out_channels=8, padding=(1,1), padding_mode='zeros', stride=(2,2))
+        self.conv2d_2 = nn.Conv2d(bias=True, dilation=(1,1), groups=8, in_channels=8, kernel_size=(3,3), out_channels=8, padding=(1,1), padding_mode='zeros', stride=(1,1))
+        self.conv2d_3 = nn.Conv2d(bias=True, dilation=(1,1), groups=1, in_channels=8, kernel_size=(1,1), out_channels=8, padding=(0,0), padding_mode='zeros', stride=(1,1))
+        self.conv2d_4 = nn.Conv2d(bias=True, dilation=(1,1), groups=8, in_channels=8, kernel_size=(3,3), out_channels=8, padding=(1,1), padding_mode='zeros', stride=(2,1))
+        self.conv2d_5 = nn.Conv2d(bias=True, dilation=(1,1), groups=1, in_channels=8, kernel_size=(1,1), out_channels=16, padding=(0,0), padding_mode='zeros', stride=(1,1))
+        self.conv2d_6 = nn.Conv2d(bias=True, dilation=(1,1), groups=16, in_channels=16, kernel_size=(3,3), out_channels=16, padding=(1,1), padding_mode='zeros', stride=(1,1))
+        self.conv2d_7 = nn.Conv2d(bias=True, dilation=(1,1), groups=1, in_channels=16, kernel_size=(1,1), out_channels=16, padding=(0,0), padding_mode='zeros', stride=(1,1))
+        self.conv2d_8 = nn.Conv2d(bias=True, dilation=(1,1), groups=16, in_channels=16, kernel_size=(3,3), out_channels=16, padding=(1,1), padding_mode='zeros', stride=(2,1))
+        self.conv2d_9 = nn.Conv2d(bias=True, dilation=(1,1), groups=1, in_channels=16, kernel_size=(1,1), out_channels=32, padding=(0,0), padding_mode='zeros', stride=(1,1))
+        self.conv2d_10 = nn.Conv2d(bias=True, dilation=(1,1), groups=32, in_channels=32, kernel_size=(3,3), out_channels=32, padding=(1,1), padding_mode='zeros', stride=(1,1))
+        self.conv2d_11 = nn.Conv2d(bias=True, dilation=(1,1), groups=1, in_channels=32, kernel_size=(1,1), out_channels=32, padding=(0,0), padding_mode='zeros', stride=(1,1))
+        self.conv2d_12 = nn.Conv2d(bias=True, dilation=(1,1), groups=32, in_channels=32, kernel_size=(3,3), out_channels=32, padding=(1,1), padding_mode='zeros', stride=(2,1))
+        self.conv2d_13 = nn.Conv2d(bias=True, dilation=(1,1), groups=1, in_channels=32, kernel_size=(1,1), out_channels=64, padding=(0,0), padding_mode='zeros', stride=(1,1))
+        self.conv2d_14 = nn.Conv2d(bias=True, dilation=(1,1), groups=64, in_channels=64, kernel_size=(5,5), out_channels=64, padding=(2,2), padding_mode='zeros', stride=(1,1))
+        self.conv2d_15 = nn.Conv2d(bias=True, dilation=(1,1), groups=1, in_channels=64, kernel_size=(1,1), out_channels=64, padding=(0,0), padding_mode='zeros', stride=(1,1))
+        self.conv2d_16 = nn.Conv2d(bias=True, dilation=(1,1), groups=64, in_channels=64, kernel_size=(5,5), out_channels=64, padding=(2,2), padding_mode='zeros', stride=(1,1))
+        self.conv2d_17 = nn.Conv2d(bias=True, dilation=(1,1), groups=1, in_channels=64, kernel_size=(1,1), out_channels=64, padding=(0,0), padding_mode='zeros', stride=(1,1))
+        self.conv2d_18 = nn.Conv2d(bias=True, dilation=(1,1), groups=64, in_channels=64, kernel_size=(5,5), out_channels=64, padding=(2,2), padding_mode='zeros', stride=(1,1))
+        self.conv2d_19 = nn.Conv2d(bias=True, dilation=(1,1), groups=1, in_channels=64, kernel_size=(1,1), out_channels=64, padding=(0,0), padding_mode='zeros', stride=(1,1))
+        self.conv2d_20 = nn.Conv2d(bias=True, dilation=(1,1), groups=64, in_channels=64, kernel_size=(5,5), out_channels=64, padding=(2,2), padding_mode='zeros', stride=(1,1))
+        self.conv2d_21 = nn.Conv2d(bias=True, dilation=(1,1), groups=1, in_channels=64, kernel_size=(1,1), out_channels=64, padding=(0,0), padding_mode='zeros', stride=(1,1))
+        self.conv2d_22 = nn.Conv2d(bias=True, dilation=(1,1), groups=64, in_channels=64, kernel_size=(5,5), out_channels=64, padding=(2,2), padding_mode='zeros', stride=(1,1))
+        self.conv2d_23 = nn.Conv2d(bias=True, dilation=(1,1), groups=1, in_channels=64, kernel_size=(1,1), out_channels=64, padding=(0,0), padding_mode='zeros', stride=(1,1))
+        self.conv2d_24 = nn.Conv2d(bias=True, dilation=(1,1), groups=64, in_channels=64, kernel_size=(5,5), out_channels=64, padding=(2,2), padding_mode='zeros', stride=(2,1))
+        self.conv2d_25 = nn.Conv2d(bias=True, dilation=(1,1), groups=1, in_channels=64, kernel_size=(1,1), out_channels=16, padding=(0,0), padding_mode='zeros', stride=(1,1))
+        self.conv2d_26 = nn.Conv2d(bias=True, dilation=(1,1), groups=1, in_channels=16, kernel_size=(1,1), out_channels=64, padding=(0,0), padding_mode='zeros', stride=(1,1))
+        self.conv2d_27 = nn.Conv2d(bias=True, dilation=(1,1), groups=1, in_channels=64, kernel_size=(1,1), out_channels=128, padding=(0,0), padding_mode='zeros', stride=(1,1))
+        self.conv2d_28 = nn.Conv2d(bias=True, dilation=(1,1), groups=128, in_channels=128, kernel_size=(5,5), out_channels=128, padding=(2,2), padding_mode='zeros', stride=(1,1))
+        self.conv2d_29 = nn.Conv2d(bias=True, dilation=(1,1), groups=1, in_channels=128, kernel_size=(1,1), out_channels=32, padding=(0,0), padding_mode='zeros', stride=(1,1))
+        self.conv2d_30 = nn.Conv2d(bias=True, dilation=(1,1), groups=1, in_channels=32, kernel_size=(1,1), out_channels=128, padding=(0,0), padding_mode='zeros', stride=(1,1))
+        self.conv2d_31 = nn.Conv2d(bias=True, dilation=(1,1), groups=1, in_channels=128, kernel_size=(1,1), out_channels=128, padding=(0,0), padding_mode='zeros', stride=(1,1))
+        self.conv2d_0 = nn.Conv2d(bias=False, dilation=(1,1), groups=1, in_channels=128, kernel_size=(1,1), out_channels=1280, padding=(0,0), padding_mode='zeros', stride=(1,1))
+        self.F_linear_0 = nn.Linear(bias=True, in_features=1280, out_features=2)
+
+        archive = zipfile.ZipFile('static/cls.static.pnnx.bin', 'r')
+        self.conv2d_1.bias = self.load_pnnx_bin_as_parameter(archive, 'conv2d_1.bias', (8), 'float32')
+        self.conv2d_1.weight = self.load_pnnx_bin_as_parameter(archive, 'conv2d_1.weight', (8,3,3,3), 'float32')
+        self.conv2d_2.bias = self.load_pnnx_bin_as_parameter(archive, 'conv2d_2.bias', (8), 'float32')
+        self.conv2d_2.weight = self.load_pnnx_bin_as_parameter(archive, 'conv2d_2.weight', (8,1,3,3), 'float32')
+        self.conv2d_3.bias = self.load_pnnx_bin_as_parameter(archive, 'conv2d_3.bias', (8), 'float32')
+        self.conv2d_3.weight = self.load_pnnx_bin_as_parameter(archive, 'conv2d_3.weight', (8,8,1,1), 'float32')
+        self.conv2d_4.bias = self.load_pnnx_bin_as_parameter(archive, 'conv2d_4.bias', (8), 'float32')
+        self.conv2d_4.weight = self.load_pnnx_bin_as_parameter(archive, 'conv2d_4.weight', (8,1,3,3), 'float32')
+        self.conv2d_5.bias = self.load_pnnx_bin_as_parameter(archive, 'conv2d_5.bias', (16), 'float32')
+        self.conv2d_5.weight = self.load_pnnx_bin_as_parameter(archive, 'conv2d_5.weight', (16,8,1,1), 'float32')
+        self.conv2d_6.bias = self.load_pnnx_bin_as_parameter(archive, 'conv2d_6.bias', (16), 'float32')
+        self.conv2d_6.weight = self.load_pnnx_bin_as_parameter(archive, 'conv2d_6.weight', (16,1,3,3), 'float32')
+        self.conv2d_7.bias = self.load_pnnx_bin_as_parameter(archive, 'conv2d_7.bias', (16), 'float32')
+        self.conv2d_7.weight = self.load_pnnx_bin_as_parameter(archive, 'conv2d_7.weight', (16,16,1,1), 'float32')
+        self.conv2d_8.bias = self.load_pnnx_bin_as_parameter(archive, 'conv2d_8.bias', (16), 'float32')
+        self.conv2d_8.weight = self.load_pnnx_bin_as_parameter(archive, 'conv2d_8.weight', (16,1,3,3), 'float32')
+        self.conv2d_9.bias = self.load_pnnx_bin_as_parameter(archive, 'conv2d_9.bias', (32), 'float32')
+        self.conv2d_9.weight = self.load_pnnx_bin_as_parameter(archive, 'conv2d_9.weight', (32,16,1,1), 'float32')
+        self.conv2d_10.bias = self.load_pnnx_bin_as_parameter(archive, 'conv2d_10.bias', (32), 'float32')
+        self.conv2d_10.weight = self.load_pnnx_bin_as_parameter(archive, 'conv2d_10.weight', (32,1,3,3), 'float32')
+        self.conv2d_11.bias = self.load_pnnx_bin_as_parameter(archive, 'conv2d_11.bias', (32), 'float32')
+        self.conv2d_11.weight = self.load_pnnx_bin_as_parameter(archive, 'conv2d_11.weight', (32,32,1,1), 'float32')
+        self.conv2d_12.bias = self.load_pnnx_bin_as_parameter(archive, 'conv2d_12.bias', (32), 'float32')
+        self.conv2d_12.weight = self.load_pnnx_bin_as_parameter(archive, 'conv2d_12.weight', (32,1,3,3), 'float32')
+        self.conv2d_13.bias = self.load_pnnx_bin_as_parameter(archive, 'conv2d_13.bias', (64), 'float32')
+        self.conv2d_13.weight = self.load_pnnx_bin_as_parameter(archive, 'conv2d_13.weight', (64,32,1,1), 'float32')
+        self.conv2d_14.bias = self.load_pnnx_bin_as_parameter(archive, 'conv2d_14.bias', (64), 'float32')
+        self.conv2d_14.weight = self.load_pnnx_bin_as_parameter(archive, 'conv2d_14.weight', (64,1,5,5), 'float32')
+        self.conv2d_15.bias = self.load_pnnx_bin_as_parameter(archive, 'conv2d_15.bias', (64), 'float32')
+        self.conv2d_15.weight = self.load_pnnx_bin_as_parameter(archive, 'conv2d_15.weight', (64,64,1,1), 'float32')
+        self.conv2d_16.bias = self.load_pnnx_bin_as_parameter(archive, 'conv2d_16.bias', (64), 'float32')
+        self.conv2d_16.weight = self.load_pnnx_bin_as_parameter(archive, 'conv2d_16.weight', (64,1,5,5), 'float32')
+        self.conv2d_17.bias = self.load_pnnx_bin_as_parameter(archive, 'conv2d_17.bias', (64), 'float32')
+        self.conv2d_17.weight = self.load_pnnx_bin_as_parameter(archive, 'conv2d_17.weight', (64,64,1,1), 'float32')
+        self.conv2d_18.bias = self.load_pnnx_bin_as_parameter(archive, 'conv2d_18.bias', (64), 'float32')
+        self.conv2d_18.weight = self.load_pnnx_bin_as_parameter(archive, 'conv2d_18.weight', (64,1,5,5), 'float32')
+        self.conv2d_19.bias = self.load_pnnx_bin_as_parameter(archive, 'conv2d_19.bias', (64), 'float32')
+        self.conv2d_19.weight = self.load_pnnx_bin_as_parameter(archive, 'conv2d_19.weight', (64,64,1,1), 'float32')
+        self.conv2d_20.bias = self.load_pnnx_bin_as_parameter(archive, 'conv2d_20.bias', (64), 'float32')
+        self.conv2d_20.weight = self.load_pnnx_bin_as_parameter(archive, 'conv2d_20.weight', (64,1,5,5), 'float32')
+        self.conv2d_21.bias = self.load_pnnx_bin_as_parameter(archive, 'conv2d_21.bias', (64), 'float32')
+        self.conv2d_21.weight = self.load_pnnx_bin_as_parameter(archive, 'conv2d_21.weight', (64,64,1,1), 'float32')
+        self.conv2d_22.bias = self.load_pnnx_bin_as_parameter(archive, 'conv2d_22.bias', (64), 'float32')
+        self.conv2d_22.weight = self.load_pnnx_bin_as_parameter(archive, 'conv2d_22.weight', (64,1,5,5), 'float32')
+        self.conv2d_23.bias = self.load_pnnx_bin_as_parameter(archive, 'conv2d_23.bias', (64), 'float32')
+        self.conv2d_23.weight = self.load_pnnx_bin_as_parameter(archive, 'conv2d_23.weight', (64,64,1,1), 'float32')
+        self.conv2d_24.bias = self.load_pnnx_bin_as_parameter(archive, 'conv2d_24.bias', (64), 'float32')
+        self.conv2d_24.weight = self.load_pnnx_bin_as_parameter(archive, 'conv2d_24.weight', (64,1,5,5), 'float32')
+        self.conv2d_25.bias = self.load_pnnx_bin_as_parameter(archive, 'conv2d_25.bias', (16), 'float32')
+        self.conv2d_25.weight = self.load_pnnx_bin_as_parameter(archive, 'conv2d_25.weight', (16,64,1,1), 'float32')
+        self.conv2d_26.bias = self.load_pnnx_bin_as_parameter(archive, 'conv2d_26.bias', (64), 'float32')
+        self.conv2d_26.weight = self.load_pnnx_bin_as_parameter(archive, 'conv2d_26.weight', (64,16,1,1), 'float32')
+        self.conv2d_27.bias = self.load_pnnx_bin_as_parameter(archive, 'conv2d_27.bias', (128), 'float32')
+        self.conv2d_27.weight = self.load_pnnx_bin_as_parameter(archive, 'conv2d_27.weight', (128,64,1,1), 'float32')
+        self.conv2d_28.bias = self.load_pnnx_bin_as_parameter(archive, 'conv2d_28.bias', (128), 'float32')
+        self.conv2d_28.weight = self.load_pnnx_bin_as_parameter(archive, 'conv2d_28.weight', (128,1,5,5), 'float32')
+        self.conv2d_29.bias = self.load_pnnx_bin_as_parameter(archive, 'conv2d_29.bias', (32), 'float32')
+        self.conv2d_29.weight = self.load_pnnx_bin_as_parameter(archive, 'conv2d_29.weight', (32,128,1,1), 'float32')
+        self.conv2d_30.bias = self.load_pnnx_bin_as_parameter(archive, 'conv2d_30.bias', (128), 'float32')
+        self.conv2d_30.weight = self.load_pnnx_bin_as_parameter(archive, 'conv2d_30.weight', (128,32,1,1), 'float32')
+        self.conv2d_31.bias = self.load_pnnx_bin_as_parameter(archive, 'conv2d_31.bias', (128), 'float32')
+        self.conv2d_31.weight = self.load_pnnx_bin_as_parameter(archive, 'conv2d_31.weight', (128,128,1,1), 'float32')
+        self.conv2d_0.weight = self.load_pnnx_bin_as_parameter(archive, 'conv2d_0.weight', (1280,128,1,1), 'float32')
+        self.F_linear_0.bias = self.load_pnnx_bin_as_parameter(archive, 'F_linear_0.bias', (2), 'float32')
+        self.F_linear_0.weight = self.load_pnnx_bin_as_parameter(archive, 'F_linear_0.weight', (2,1280), 'float32')
+        archive.close()
+
+    def load_pnnx_bin_as_parameter(self, archive, key, shape, dtype, requires_grad=True):
+        return nn.Parameter(self.load_pnnx_bin_as_tensor(archive, key, shape, dtype), requires_grad)
+
+    def load_pnnx_bin_as_tensor(self, archive, key, shape, dtype):
+        fd, tmppath = tempfile.mkstemp()
+        with os.fdopen(fd, 'wb') as tmpf, archive.open(key) as keyfile:
+            tmpf.write(keyfile.read())
+        m = np.memmap(tmppath, dtype=dtype, mode='r', shape=shape).copy()
+        os.remove(tmppath)
+        return torch.from_numpy(m)
+
+    def forward(self, v_0):
+        v_1 = self.conv2d_1(v_0)
+        v_2 = F.hardswish(v_1)
+        v_3 = self.conv2d_2(v_2)
+        v_4 = F.hardswish(v_3)
+        v_5 = self.conv2d_3(v_4)
+        v_6 = F.hardswish(v_5)
+        v_7 = self.conv2d_4(v_6)
+        v_8 = F.hardswish(v_7)
+        v_9 = self.conv2d_5(v_8)
+        v_10 = F.hardswish(v_9)
+        v_11 = self.conv2d_6(v_10)
+        v_12 = F.hardswish(v_11)
+        v_13 = self.conv2d_7(v_12)
+        v_14 = F.hardswish(v_13)
+        v_15 = self.conv2d_8(v_14)
+        v_16 = F.hardswish(v_15)
+        v_17 = self.conv2d_9(v_16)
+        v_18 = F.hardswish(v_17)
+        v_19 = self.conv2d_10(v_18)
+        v_20 = F.hardswish(v_19)
+        v_21 = self.conv2d_11(v_20)
+        v_22 = F.hardswish(v_21)
+        v_23 = self.conv2d_12(v_22)
+        v_24 = F.hardswish(v_23)
+        v_25 = self.conv2d_13(v_24)
+        v_26 = F.hardswish(v_25)
+        v_27 = self.conv2d_14(v_26)
+        v_28 = F.hardswish(v_27)
+        v_29 = self.conv2d_15(v_28)
+        v_30 = F.hardswish(v_29)
+        v_31 = self.conv2d_16(v_30)
+        v_32 = F.hardswish(v_31)
+        v_33 = self.conv2d_17(v_32)
+        v_34 = F.hardswish(v_33)
+        v_35 = self.conv2d_18(v_34)
+        v_36 = F.hardswish(v_35)
+        v_37 = self.conv2d_19(v_36)
+        v_38 = F.hardswish(v_37)
+        v_39 = self.conv2d_20(v_38)
+        v_40 = F.hardswish(v_39)
+        v_41 = self.conv2d_21(v_40)
+        v_42 = F.hardswish(v_41)
+        v_43 = self.conv2d_22(v_42)
+        v_44 = F.hardswish(v_43)
+        v_45 = self.conv2d_23(v_44)
+        v_46 = F.hardswish(v_45)
+        v_47 = self.conv2d_24(v_46)
+        v_48 = F.hardswish(v_47)
+        v_49 = F.adaptive_avg_pool2d(v_48, output_size=(1,1))
+        v_50 = self.conv2d_25(v_49)
+        v_51 = F.relu(v_50)
+        v_52 = self.conv2d_26(v_51)
+        v_53 = F.hardsigmoid(v_52)
+        v_54 = (v_48 * v_53)
+        v_55 = self.conv2d_27(v_54)
+        v_56 = F.hardswish(v_55)
+        v_57 = self.conv2d_28(v_56)
+        v_58 = F.hardswish(v_57)
+        v_59 = F.adaptive_avg_pool2d(v_58, output_size=(1,1))
+        v_60 = self.conv2d_29(v_59)
+        v_61 = F.relu(v_60)
+        v_62 = self.conv2d_30(v_61)
+        v_63 = F.hardsigmoid(v_62)
+        v_64 = (v_58 * v_63)
+        v_65 = self.conv2d_31(v_64)
+        v_66 = F.hardswish(v_65)
+        v_67 = F.adaptive_avg_pool2d(v_66, output_size=(1,1))
+        v_68 = self.conv2d_0(v_67)
+        v_69 = F.hardswish(v_68)
+        v_70 = (v_69 * 0.8)
+        v_71 = v_70.reshape(1, 1280)
+        v_72 = self.F_linear_0(v_71)
+        v_73 = F.softmax(v_72, dim=1)
+        return v_73
+
+def export_torchscript():
+    net = Model()
+    net.float()
+    net.eval()
+
+    torch.manual_seed(0)
+    v_0 = torch.rand(1, 3, 80, 160, dtype=torch.float)
+
+    mod = torch.jit.trace(net, v_0)
+    mod.save("static/cls.static_pnnx.py.pt")
+
+def export_onnx():
+    net = Model()
+    net.float()
+    net.eval()
+
+    torch.manual_seed(0)
+    v_0 = torch.rand(1, 3, 80, 160, dtype=torch.float)
+
+    torch.onnx.export(net, v_0, "static/cls.static_pnnx.py.onnx", export_params=True, operator_export_type=torch.onnx.OperatorExportTypes.ONNX_ATEN_FALLBACK, opset_version=13, input_names=['in0'], output_names=['out0'])
+
+def export_pnnx():
+    net = Model()
+    net.float()
+    net.eval()
+
+    torch.manual_seed(0)
+    v_0 = torch.rand(1, 3, 80, 160, dtype=torch.float)
+
+    import pnnx
+    pnnx.export(net, "static/cls.static_pnnx.py.pt", v_0)
+
+def export_ncnn():
+    export_pnnx()
+
+@torch.no_grad()
+def test_inference():
+    net = Model()
+    net.float()
+    net.eval()
+
+    torch.manual_seed(0)
+    v_0 = torch.rand(1, 3, 80, 160, dtype=torch.float)
+
+    return net(v_0)
+
+if __name__ == "__main__":
+    print(test_inference())

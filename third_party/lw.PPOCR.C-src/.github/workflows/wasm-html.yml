@@ -1,0 +1,398 @@
+name: browser-wasm-sdk-and-html
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      build_web_variants:
+        description: "Build PP-OCRv6 Small and Medium standalone Web artifacts"
+        required: false
+        default: false
+        type: boolean
+  workflow_call:
+    inputs:
+      build_web_variants:
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build browser OCR SDK and standalone HTML
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            requirements-converter.txt
+            requirements-wasm-test.txt
+
+      - name: Install Python dependencies
+        run: >-
+          python -m pip install
+          -r requirements-converter.txt
+          -r requirements-wasm-test.txt
+
+      - name: Cache Playwright Chromium
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-1.62.0-${{ runner.os }}-${{ runner.arch }}
+
+      - name: Install Playwright Chromium
+        run: python -m playwright install --with-deps chromium
+
+      - name: Set up Emscripten
+        uses: mymindstorm/setup-emsdk@v16
+        with:
+          version: 4.0.15
+          actions-cache-folder: emsdk-cache
+
+      - name: Configure WASM build
+        run: >-
+          emcmake cmake -S . -B build-wasm -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DLW_BUILD_HTTP_DEMO=OFF
+          -DLW_BUILD_CSHARP_DEMOS=OFF
+          -DBUILD_TESTING=OFF
+          -DLW_BUILD_WEB_MODEL_VARIANTS=${{ inputs.build_web_variants || false }}
+
+      - name: Build browser and Node WASM distributions
+        run: >-
+          cmake --build build-wasm
+          --target lw-ocr-js lw-ocr-html lw-node-wasm-package det_demo_fixture
+          --parallel
+
+      - name: Build optional PP-OCRv6 Small and Medium Web variants
+        if: inputs.build_web_variants == true
+        run: >-
+          cmake --build build-wasm
+          --target lw-ocr-html-all
+          --parallel
+
+      - name: Verify browser and Node artifacts
+        shell: bash
+        run: |
+          test -s build-wasm/lw-ppocr.js
+          test -s build-wasm/ocr-demo.html
+          test -s build-wasm/node-wasm/runtime.cjs
+          node_archive="$(find build-wasm -maxdepth 1 -type f -name 'lw.PPOCR.C-*-node-wasm.zip' -print -quit)"
+          test -n "${node_archive}" && test -s "${node_archive}"
+          test -s "${node_archive}.sha256"
+          ! grep -a -q '__LW_' build-wasm/lw-ppocr.js
+          ! grep -a -q '__LW_' build-wasm/ocr-demo.html
+          ! grep -a -q 'LwPdf' build-wasm/lw-ppocr.js
+          grep -a -q '6.3.289' build-wasm/ocr-demo.html
+          grep -a -q 'embedded-pdfjs-wasm/' build-wasm/ocr-demo.html
+          grep -a -q 'openjpeg.wasm' build-wasm/ocr-demo.html
+          grep -a -q 'BinaryDataFactory' build-wasm/ocr-demo.html
+          echo 'f401927e692efc7735e0cd528c490d0dd31b7f0972c122b7040df805be45cce4  web/vendor/pdfjs/pdf.min.mjs' | sha256sum -c -
+          echo 'a33cfe728c584fdba4fcc1fd54bcdc2f9f2f13889ddbb5b2bd1d0f8cbe49b84e  web/vendor/pdfjs/pdf.worker.min.mjs' | sha256sum -c -
+          echo 'e6bee67724a7b5436fe8162638e3708cfc8d52b6342db69a49715e30ff27cfdc  web/vendor/pdfjs/jbig2.wasm' | sha256sum -c -
+          echo '004a0e62db930ba9ff2a22212f4554d0bb57a0635a8287caf70f98117cee14ba  web/vendor/pdfjs/openjpeg.wasm' | sha256sum -c -
+          echo '663d86126d5f5fcb1c61490f94353e2a8375660b8c5498ab3ebab5a34b08800e  web/vendor/pdfjs/qcms_bg.wasm' | sha256sum -c -
+          # The checksum file stores only the archive basename. Verify from
+          # the archive directory so sha256sum resolves that name correctly.
+          (
+            cd "$(dirname "${node_archive}")"
+            sha256sum -c "$(basename "${node_archive}").sha256"
+          )
+
+      - name: Verify optional PP-OCRv6 Web variants
+        if: inputs.build_web_variants == true
+        shell: bash
+        run: |
+          set -euo pipefail
+          for variant in small medium; do
+            test -s "build-wasm/lw-ppocr-v6-${variant}.js"
+            test -s "build-wasm/ocr-demo-${variant}.html"
+            grep -a -q 'variant: "'${variant}'"' build-wasm/lw-ppocr-v6-${variant}.js
+            ! grep -a -q '__LW_' "build-wasm/lw-ppocr-v6-${variant}.js"
+            ! grep -a -q '__LW_' "build-wasm/ocr-demo-${variant}.html"
+          done
+
+      - name: Run browser SDK contract and memory test
+        run: >-
+          python web/test_ocr_sdk.py
+          --sdk build-wasm/lw-ppocr.js
+          --sample models/ppocrv6-tiny/sample.jpg
+          --golden ci/web-ppocrv6-tiny.json
+
+      - name: Run standalone HTML UI test
+        run: >-
+          python web/test_ocr_html.py
+          --html build-wasm/ocr-demo.html
+          --sample models/ppocrv6-tiny/sample.jpg
+          --golden ci/web-ppocrv6-tiny.json
+
+      - name: Run browser fallback simulation test
+        run: >-
+          python web/test_web_browser_fallbacks.py
+          --html build-wasm/ocr-demo.html
+          --sample models/ppocrv6-tiny/sample.jpg
+
+      - name: Run Small browser SDK OCR and lifecycle contract
+        if: inputs.build_web_variants == true
+        run: >-
+          python web/test_ocr_sdk.py
+          --sdk build-wasm/lw-ppocr-v6-small.js
+          --sample models/ppocrv6-tiny/sample.jpg
+          --golden ci/web-ppocrv6-small.json
+          --variant-contract-only
+
+      - name: Run Small standalone HTML OCR contract
+        if: inputs.build_web_variants == true
+        run: >-
+          python web/test_ocr_html.py
+          --html build-wasm/ocr-demo-small.html
+          --sample models/ppocrv6-tiny/sample.jpg
+          --golden ci/web-ppocrv6-small.json
+          --variant-contract-only
+
+      - name: Run Medium browser SDK OCR and lifecycle contract
+        if: inputs.build_web_variants == true
+        run: >-
+          python web/test_ocr_sdk.py
+          --sdk build-wasm/lw-ppocr-v6-medium.js
+          --sample models/ppocrv6-tiny/sample.jpg
+          --golden ci/web-ppocrv6-medium.json
+          --variant-contract-only
+          --html-size-source build-wasm/ocr-demo-medium.html
+          --report build-wasm/web-medium-report.json
+
+      - name: Run Medium standalone HTML OCR contract
+        if: inputs.build_web_variants == true
+        run: >-
+          python web/test_ocr_html.py
+          --html build-wasm/ocr-demo-medium.html
+          --sample models/ppocrv6-tiny/sample.jpg
+          --golden ci/web-ppocrv6-medium.json
+          --variant-contract-only
+
+      - name: Summarize Medium browser measurements
+        if: inputs.build_web_variants == true
+        shell: bash
+        run: |
+          echo "## PP-OCRv6 Medium browser measurements" >> "$GITHUB_STEP_SUMMARY"
+          echo '```json' >> "$GITHUB_STEP_SUMMARY"
+          cat build-wasm/web-medium-report.json >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Run standalone PDF OCR test
+        run: >-
+          python web/test_pdf_html.py
+          --html build-wasm/ocr-demo.html
+          --sample models/ppocrv6-tiny/sample.jpg
+
+      - name: Upload browser artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: lw.PPOCR.C-browser-${{ github.sha }}
+          path: |
+            build-wasm/lw-ppocr.js
+            build-wasm/ocr-demo.html
+            build-wasm/lw-ppocr-v6-small.js
+            build-wasm/lw-ppocr-v6-medium.js
+            build-wasm/ocr-demo-small.html
+            build-wasm/ocr-demo-medium.html
+            build-wasm/lw.PPOCR.C-*-node-wasm.zip
+            build-wasm/lw.PPOCR.C-*-node-wasm.zip.sha256
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload Medium browser measurement report
+        if: inputs.build_web_variants == true
+        uses: actions/upload-artifact@v7
+        with:
+          name: web-medium-report-${{ github.sha }}
+          path: build-wasm/web-medium-report.json
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload Node regression fixture
+        uses: actions/upload-artifact@v7
+        with:
+          name: node-regression-fixture-${{ github.sha }}
+          path: build-wasm/models/sample.ppm
+          if-no-files-found: error
+          retention-days: 14
+
+  legacy:
+    name: Build Tiny legacy scalar HTML
+    needs: build
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install Legacy JavaScript build tools
+        working-directory: web
+        run: npm ci
+
+      - name: Download modern browser reference
+        uses: actions/download-artifact@v8
+        with:
+          name: lw.PPOCR.C-browser-${{ github.sha }}
+          path: modern-web
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            requirements-converter.txt
+            requirements-wasm-test.txt
+
+      - name: Install Python dependencies
+        run: >-
+          python -m pip install
+          -r requirements-converter.txt
+          -r requirements-wasm-test.txt
+
+      - name: Install Playwright Chromium
+        run: python -m playwright install --with-deps chromium
+
+      - name: Set up Emscripten
+        uses: mymindstorm/setup-emsdk@v16
+        with:
+          version: 4.0.15
+          actions-cache-folder: emsdk-cache
+
+      - name: Configure Tiny Legacy Web build
+        run: >-
+          emcmake cmake -S . -B build-wasm-legacy -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DLW_BUILD_HTTP_DEMO=OFF
+          -DLW_BUILD_CSHARP_DEMOS=OFF
+          -DBUILD_TESTING=OFF
+          -DLW_WEB_LEGACY=ON
+          -DLW_WASM_SIMD128=OFF
+          -DLW_WEB_PDF=OFF
+          -DLW_BUILD_WEB_MODEL_VARIANTS=OFF
+
+      - name: Build Tiny Legacy Web artifacts
+        run: >-
+          cmake --build build-wasm-legacy
+          --target lw-ocr-js lw-ocr-html
+          --parallel
+
+      - name: Verify Tiny Legacy Web artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s build-wasm-legacy/lw_ppocr_web.legacy.js
+          test -s build-wasm-legacy/legacy-runtime-report.json
+          test -s build-wasm-legacy/lw-ppocr-legacy.js
+          test -s build-wasm-legacy/ocr-demo-legacy.html
+          ! test -e build-wasm-legacy/runtime.cjs
+          ! grep -a -q '__LW_' build-wasm-legacy/lw-ppocr-legacy.js
+          ! grep -a -q '__LW_' build-wasm-legacy/ocr-demo-legacy.html
+          grep -a -q 'flavor: "legacy"' build-wasm-legacy/lw-ppocr-legacy.js
+          grep -a -q 'wasmSimd128: false' build-wasm-legacy/lw-ppocr-legacy.js
+          grep -a -q 'minChromeVersion: 70' build-wasm-legacy/lw-ppocr-legacy.js
+          grep -a -q 'jsTarget: "chrome70"' build-wasm-legacy/lw-ppocr-legacy.js
+          ! grep -a -q '6.3.289' build-wasm-legacy/ocr-demo-legacy.html
+          ! grep -a -q 'openjpeg.wasm' build-wasm-legacy/ocr-demo-legacy.html
+
+      - name: Run Legacy whole-artifact Chrome 70 syntax gate
+        run: >-
+          node web/check_legacy_js_syntax.mjs
+          --sdk build-wasm-legacy/lw-ppocr-legacy.js
+          --html build-wasm-legacy/ocr-demo-legacy.html
+          --ecma-version 2018
+
+      - name: Run Legacy packaging contract gate
+        run: >-
+          python web/test_legacy_web_syntax.py
+          --sdk build-wasm-legacy/lw-ppocr-legacy.js
+          --html build-wasm-legacy/ocr-demo-legacy.html
+
+      - name: Run Tiny Legacy OCR contract
+        run: >-
+          python web/test_legacy_ocr_html.py
+          --html build-wasm-legacy/ocr-demo-legacy.html
+          --reference-html modern-web/ocr-demo.html
+          --sample models/ppocrv6-tiny/sample.jpg
+          --golden ci/web-ppocrv6-tiny.json
+          --report build-wasm-legacy/legacy-web-report.json
+
+      - name: Upload Legacy runtime debug artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: lw.PPOCR.C-browser-legacy-debug-${{ github.sha }}
+          path: |
+            build-wasm-legacy/lw_ppocr_web.js
+            build-wasm-legacy/lw_ppocr_web.legacy.js
+            build-wasm-legacy/legacy-runtime-report.json
+          if-no-files-found: ignore
+          retention-days: 3
+
+      - name: Upload Tiny Legacy Web artifact
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: lw.PPOCR.C-browser-legacy-${{ github.sha }}
+          path: |
+            build-wasm-legacy/lw-ppocr-legacy.js
+            build-wasm-legacy/ocr-demo-legacy.html
+            build-wasm-legacy/legacy-web-report.json
+          if-no-files-found: error
+          retention-days: 14
+
+  node-smoke:
+    name: Node.js ${{ matrix.node-version }} WASM smoke and OCR regression
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: [18, 20, 22]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      - name: Download packaged Node/WASM artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: lw.PPOCR.C-browser-${{ github.sha }}
+          path: node-artifacts
+
+      - name: Download Node regression fixture
+        uses: actions/download-artifact@v8
+        with:
+          name: node-regression-fixture-${{ github.sha }}
+          path: node-artifacts
+
+      - name: Run Node smoke and OCR regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="$(find node-artifacts -maxdepth 1 -type f -name '*-node-wasm.zip' -print -quit)"
+          test -n "${archive}"
+          unzip -q "${archive}" -d node-package
+          package_dir="$(find node-package -mindepth 1 -maxdepth 1 -type d -name '*-node-wasm' -print -quit)"
+          test -n "${package_dir}"
+          node tests/node/smoke.cjs \
+            --package "${package_dir}" \
+            --sample node-artifacts/sample.ppm \
+            --expected-backend wasm128 \
+            --expected-text-sha256 6ff42b9ea692cc19988c06af05ad7ac2542e2ff6f111202e73a0c900af988284

@@ -1,0 +1,198 @@
+{
+  "lock_version": 1,
+  "runtime_dependencies": [
+    {
+      "name": "cpp-httplib",
+      "version": "0.48.0-win7-patched",
+      "license": "MIT",
+      "scope": "optional-cross-platform-http-demo",
+      "source": "https://github.com/lxw112190/lw.OpenCVDNN.PPOCR/blob/2408e3f9ab4dbfe2a2a2da6580af2255d20d915c/server/third_party/httplib.h",
+      "purl": "pkg:github/yhirose/cpp-httplib@v0.48.0",
+      "sha256": "1c8b44c8ab0498322c08840dbdfcd5006bc28c5a3b140b0c2cf30777b7232fc6"
+    },
+    {
+      "name": "pdfjs-dist",
+      "version": "6.3.289",
+      "license": "Apache-2.0",
+      "scope": "standalone-html-pdf-frontend",
+      "source": "https://registry.npmjs.org/pdfjs-dist/-/pdfjs-dist-6.3.289.tgz",
+      "purl": "pkg:npm/pdfjs-dist@6.3.289",
+      "sha256": "06f25e887adc6489f04c9fcb14198c77e4e5623a59a0bba5c4cea5838a4f1241"
+    }
+  ],
+  "development_dependencies": [
+    {
+      "name": "numpy",
+      "version": "1.26.4",
+      "license": "BSD-3-Clause",
+      "scope": "converter-and-tests",
+      "source": "https://github.com/numpy/numpy",
+      "purl": "pkg:pypi/numpy@1.26.4"
+    },
+    {
+      "name": "onnx",
+      "version": "1.22.0",
+      "license": "Apache-2.0",
+      "scope": "converter-and-tests",
+      "source": "https://github.com/onnx/onnx",
+      "purl": "pkg:pypi/onnx@1.22.0"
+    },
+    {
+      "name": "onnxruntime",
+      "version": "1.21.0",
+      "license": "MIT",
+      "scope": "complete-graph-reference-tests",
+      "source": "https://github.com/microsoft/onnxruntime",
+      "purl": "pkg:pypi/onnxruntime@1.21.0"
+    },
+    {
+      "name": "Pillow",
+      "version": "10.4.0",
+      "license": "HPND",
+      "scope": "image-fixture-reference-and-wasm-pdf-tests",
+      "source": "https://github.com/python-pillow/Pillow",
+      "purl": "pkg:pypi/pillow@10.4.0"
+    },
+    {
+      "name": "opencv-python-headless",
+      "version": "4.11.0.86",
+      "license": "Apache-2.0",
+      "scope": "perspective-crop-reference-tests-only",
+      "source": "https://github.com/opencv/opencv-python",
+      "purl": "pkg:pypi/opencv-python-headless@4.11.0.86"
+    },
+    {
+      "name": "protobuf",
+      "version": "4.25.3",
+      "license": "BSD-3-Clause",
+      "scope": "converter-transitive",
+      "source": "https://github.com/protocolbuffers/protobuf",
+      "purl": "pkg:pypi/protobuf@4.25.3"
+    },
+    {
+      "name": "ml_dtypes",
+      "version": "0.5.4",
+      "license": "Apache-2.0",
+      "scope": "converter-transitive",
+      "source": "https://github.com/jax-ml/ml_dtypes",
+      "purl": "pkg:pypi/ml_dtypes@0.5.4"
+    },
+    {
+      "name": "typing_extensions",
+      "version": "4.15.0",
+      "license": "PSF-2.0",
+      "scope": "converter-transitive",
+      "source": "https://github.com/python/typing_extensions",
+      "purl": "pkg:pypi/typing_extensions@4.15.0"
+    },
+    {
+      "name": "coloredlogs",
+      "version": "15.0.1",
+      "license": "MIT",
+      "scope": "onnxruntime-transitive",
+      "source": "https://github.com/xolox/python-coloredlogs",
+      "purl": "pkg:pypi/coloredlogs@15.0.1"
+    },
+    {
+      "name": "flatbuffers",
+      "version": "25.2.10",
+      "license": "Apache-2.0",
+      "scope": "onnxruntime-transitive",
+      "source": "https://github.com/google/flatbuffers",
+      "purl": "pkg:pypi/flatbuffers@25.2.10"
+    },
+    {
+      "name": "humanfriendly",
+      "version": "10.0",
+      "license": "MIT",
+      "scope": "coloredlogs-transitive",
+      "source": "https://github.com/xolox/python-humanfriendly",
+      "purl": "pkg:pypi/humanfriendly@10.0"
+    },
+    {
+      "name": "packaging",
+      "version": "24.2",
+      "license": "Apache-2.0 OR BSD-2-Clause",
+      "scope": "onnxruntime-transitive",
+      "source": "https://github.com/pypa/packaging",
+      "purl": "pkg:pypi/packaging@24.2"
+    },
+    {
+      "name": "mpmath",
+      "version": "1.3.0",
+      "license": "BSD-3-Clause",
+      "scope": "sympy-transitive",
+      "source": "https://github.com/mpmath/mpmath",
+      "purl": "pkg:pypi/mpmath@1.3.0"
+    },
+    {
+      "name": "sympy",
+      "version": "1.14.0",
+      "license": "BSD-3-Clause",
+      "scope": "onnxruntime-transitive",
+      "source": "https://github.com/sympy/sympy",
+      "purl": "pkg:pypi/sympy@1.14.0"
+    },
+    {
+      "name": "Emscripten",
+      "version": "4.0.15",
+      "license": "MIT AND NCSA",
+      "scope": "wasm-build-toolchain",
+      "source": "https://github.com/emscripten-core/emscripten",
+      "purl": "pkg:github/emscripten-core/emscripten@4.0.15"
+    },
+    {
+      "name": "playwright",
+      "version": "1.62.0",
+      "license": "Apache-2.0",
+      "scope": "wasm-browser-smoke-test",
+      "source": "https://github.com/microsoft/playwright-python",
+      "purl": "pkg:pypi/playwright@1.62.0"
+    },
+    {
+      "name": "Microsoft.NETFramework.ReferenceAssemblies.net35",
+      "version": "1.0.3",
+      "license": "MIT",
+      "scope": "managed-demo-build",
+      "source": "https://github.com/microsoft/dotnet/tree/main/releases/reference-assemblies",
+      "purl": "pkg:nuget/Microsoft.NETFramework.ReferenceAssemblies.net35@1.0.3"
+    }
+  ],
+  "model_assets": [
+    {
+      "name": "PP-OCRv6 tiny detector",
+      "version": "workspace-2026-08-25",
+      "license": "Apache-2.0",
+      "path": "models/ppocrv6-tiny/det.onnx",
+      "sha256": "193bab7a04fca699a6c82e6abb5b81bdb28177f0abd4062552b04908dafb19f8"
+    },
+    {
+      "name": "PP-OCRv6 tiny classifier",
+      "version": "workspace-2026-08-25",
+      "license": "Apache-2.0",
+      "path": "models/ppocrv6-tiny/cls.onnx",
+      "sha256": "dd8b2b61983d76ab230a58da9e0e0e84956b71c3877f2ce6e438fe22d74d2cf2"
+    },
+    {
+      "name": "PP-OCRv6 tiny recognizer",
+      "version": "workspace-2026-08-25",
+      "license": "Apache-2.0",
+      "path": "models/ppocrv6-tiny/rec.onnx",
+      "sha256": "9ef676d6ed3c88256a2d92c640c44f25b0c40947e111b14b8be8f594091563e6"
+    },
+    {
+      "name": "PP-OCR dictionary",
+      "version": "workspace-2026-08-25",
+      "license": "Apache-2.0",
+      "path": "models/ppocrv6-tiny/ppocr_keys.txt",
+      "sha256": "46e1b34ef45684cb46d75ac76d355341fe7f0a2c38d6ee02e63ae6b3878019fc"
+    },
+    {
+      "name": "PP-OCR sample image",
+      "version": "workspace-2026-08-25",
+      "license": "Apache-2.0",
+      "path": "models/ppocrv6-tiny/sample.jpg",
+      "sha256": "30c417c9f758a3b62718729f5a944f7d2e10cdd2bde0e8ce6785523ddb68ffe9"
+    }
+  ]
+}

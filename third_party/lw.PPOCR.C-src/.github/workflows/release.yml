@@ -1,0 +1,384 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+# Only the final job can write a Release. The reusable build workflows and
+# their third-party actions receive read-only repository access.
+permissions:
+  contents: read
+
+jobs:
+  native:
+    name: Build and test native packages
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+
+  wasm:
+    name: Build and test standalone WASM
+    uses: ./.github/workflows/wasm-html.yml
+    with:
+      build_web_variants: true
+    permissions:
+      contents: read
+
+  android:
+    name: Build and test Android ARM64 Preview
+    uses: ./.github/workflows/android.yml
+    permissions:
+      contents: read
+
+  java:
+    name: Build and test Desktop Java JNI bundles
+    uses: ./.github/workflows/java-jni.yml
+    permissions:
+      contents: read
+
+  small-models:
+    name: Build and validate Small runtime model pack
+    uses: ./.github/workflows/ppocrv6-small-validation.yml
+    with:
+      runtime_version: ${{ github.ref_name }}
+    permissions:
+      contents: read
+
+  medium-models:
+    name: Build and validate Medium runtime model pack
+    uses: ./.github/workflows/ppocrv6-medium-validation.yml
+    with:
+      runtime_version: ${{ github.ref_name }}
+    permissions:
+      contents: read
+
+  tiny-models:
+    name: Build and validate Tiny runtime model pack
+    uses: ./.github/workflows/ppocrv6-tiny-validation.yml
+    with:
+      runtime_version: ${{ github.ref_name }}
+    permissions:
+      contents: read
+
+  publish:
+    name: Publish tested assets
+    needs: [native, wasm, android, java, tiny-models, small-models, medium-models]
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Validate release tag and project version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          if [[ ! "${tag}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z][0-9A-Za-z.-]*)?$ ]]; then
+            echo "unsupported release tag: ${tag}" >&2
+            exit 1
+          fi
+
+          version="${tag#v}"
+          base_version="${version%%-*}"
+          project_version="$(sed -nE 's/^project\(lw\.PPOCR\.C VERSION ([0-9]+\.[0-9]+\.[0-9]+) LANGUAGES C\)$/\1/p' CMakeLists.txt)"
+          if [[ -z "${project_version}" || "${base_version}" != "${project_version}" ]]; then
+            echo "tag ${tag} does not match CMake project version ${project_version:-<missing>}" >&2
+            exit 1
+          fi
+
+          echo "tag=${tag}" >> "${GITHUB_OUTPUT}"
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+          echo "base_version=${base_version}" >> "${GITHUB_OUTPUT}"
+
+      - name: Download tested build artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: release-assets
+          pattern: lw.PPOCR.C-*
+          merge-multiple: true
+
+      - name: Download tested Android artifacts
+        uses: actions/download-artifact@v8
+        with:
+          name: lw-ppocr-android-arm64-preview
+          path: release-assets/android
+
+      - name: Download tested Tiny model-pack artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: release-assets/model-packs/tiny
+          pattern: ppocrv6-tiny-validation-*
+          merge-multiple: false
+
+      - name: Download tested Small model-pack artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: release-assets/model-packs/small
+          pattern: ppocrv6-small-validation-*
+          merge-multiple: false
+
+      - name: Download tested Medium model-pack artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: release-assets/model-packs/medium
+          pattern: ppocrv6-medium-validation-*
+          merge-multiple: false
+
+      - name: Download tested Windows Java JNI bundle
+        uses: actions/download-artifact@v8
+        with:
+          name: lw-ppocr-java-jni-windows-x64
+          path: release-assets/java/windows-bundle
+
+      - name: Download tested Linux Java JNI bundle
+        uses: actions/download-artifact@v8
+        with:
+          name: lw-ppocr-java-jni-linux-x64
+          path: release-assets/java/linux-bundle
+
+      - name: Download tested macOS Java JNI bundle
+        uses: actions/download-artifact@v8
+        with:
+          name: lw-ppocr-java-jni-macos-arm64
+          path: release-assets/java/macos-bundle
+
+      - name: Verify and prepare release assets
+        shell: bash
+        env:
+          BUILD_VERSION: ${{ steps.version.outputs.base_version }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          windows_source="lw.PPOCR.C-${BUILD_VERSION}-windows-x64-msvc.zip"
+          windows="lw.PPOCR.C-${VERSION}-windows-x64-msvc.zip"
+          linux_source="lw.PPOCR.C-${BUILD_VERSION}-linux-x86_64.tar.gz"
+          linux="lw.PPOCR.C-${VERSION}-linux-x86_64.tar.gz"
+          wasm="lw.PPOCR.C-${VERSION}-ocr-demo.html"
+          websdk="lw.PPOCR.C-${VERSION}-web-sdk.js"
+          wasm_small="lw.PPOCR.C-${VERSION}-ocr-demo-small.html"
+          websdk_small="lw.PPOCR.C-${VERSION}-web-sdk-small.js"
+          wasm_medium="lw.PPOCR.C-${VERSION}-ocr-demo-medium.html"
+          websdk_medium="lw.PPOCR.C-${VERSION}-web-sdk-medium.js"
+          nodewasm_source="lw.PPOCR.C-${BUILD_VERSION}-node-wasm.zip"
+          nodewasm="lw.PPOCR.C-${VERSION}-node-wasm.zip"
+          android_aar="lw.PPOCR.C-${VERSION}-android-arm64.aar"
+          android_apk="lw.PPOCR.C-${VERSION}-android-arm64-demo.apk"
+          android_checksums="lw.PPOCR.C-${VERSION}-android-arm64.SHA256SUMS.txt"
+          java_windows="lw.PPOCR.C-${VERSION}-java-jni-windows-x64.zip"
+          java_linux="lw.PPOCR.C-${VERSION}-java-jni-linux-x64.tar.gz"
+          java_macos="lw.PPOCR.C-${VERSION}-java-jni-macos-arm64.tar.gz"
+          models="lw.PPOCR.C-${VERSION}-ppocrv6-models.zip"
+          tiny_model="lw.PPOCR.C-${VERSION}-ppocrv6-tiny-runtime.zip"
+          small_model="lw.PPOCR.C-${VERSION}-ppocrv6-small-runtime.zip"
+          medium_model="lw.PPOCR.C-${VERSION}-ppocrv6-medium-runtime.zip"
+
+          test -s "release-assets/${windows_source}"
+          test -s "release-assets/${windows_source}.sha256"
+          test -s "release-assets/${linux_source}"
+          test -s "release-assets/${linux_source}.sha256"
+          test -s "release-assets/ocr-demo.html"
+          test -s "release-assets/lw-ppocr.js"
+          test -s "release-assets/ocr-demo-small.html"
+          test -s "release-assets/lw-ppocr-v6-small.js"
+          test -s "release-assets/ocr-demo-medium.html"
+          test -s "release-assets/lw-ppocr-v6-medium.js"
+          test -s "release-assets/${nodewasm_source}"
+          test -s "release-assets/${nodewasm_source}.sha256"
+
+          android_root="release-assets/android"
+          android_aar_source="$(find "$android_root" -type f -name 'lw-ppocr-android-release.aar' -print -quit)"
+          android_apk_source="$(find "$android_root" -type f -name 'demo-preview.apk' -print -quit)"
+          android_source_checksums="$(find "$android_root" -type f -name 'SHA256SUMS.txt' -print -quit)"
+          test -n "$android_aar_source"
+          test -n "$android_apk_source"
+          test -n "$android_source_checksums"
+
+          java_windows_root="release-assets/java/windows-bundle"
+          java_linux_root="release-assets/java/linux-bundle"
+          java_macos_root="release-assets/java/macos-bundle"
+          test -s "$java_windows_root/native/lw_ppocr_java.dll"
+          test -s "$java_windows_root/native/lw_ppocr_c.dll"
+          test -s "$java_windows_root/models/det.lwm"
+          test -s "$java_windows_root/SHA256SUMS.txt"
+          test -s "$java_linux_root/native/liblw_ppocr_java.so"
+          test -n "$(find "$java_linux_root/native" -maxdepth 1 -type f -name 'liblw_ppocr_c.so*' -print -quit)"
+          test -s "$java_linux_root/models/det.lwm"
+          test -s "$java_linux_root/SHA256SUMS.txt"
+          test -s "$java_macos_root/native/liblw_ppocr_java.dylib"
+          test -n "$(find "$java_macos_root/native" -maxdepth 1 -type f -name 'liblw_ppocr_c*.dylib' -print -quit)"
+          test -s "$java_macos_root/models/det.lwm"
+          test -s "$java_macos_root/SHA256SUMS.txt"
+
+          python tools/validate_model_catalog.py models/ppocrv6-models.json
+
+          select_identical_model_pack() {
+            local variant="$1"
+            local source_root="$2"
+            local output_path="$3"
+            mapfile -t candidates < <(find "$source_root" -type f -name "ppocrv6-${variant}-runtime.zip" -print | sort)
+            if [[ "${#candidates[@]}" -ne 2 ]]; then
+              echo "expected two validated ${variant} model packs, found ${#candidates[@]}" >&2
+              printf '%s\n' "${candidates[@]}" >&2
+              exit 1
+            fi
+            local hash_0="$(sha256sum "${candidates[0]}" | awk '{print $1}')"
+            local hash_1="$(sha256sum "${candidates[1]}" | awk '{print $1}')"
+            if [[ "${hash_0}" != "${hash_1}" ]]; then
+              echo "validated ${variant} model packs differ between platforms" >&2
+              exit 1
+            fi
+            cp "${candidates[0]}" "$output_path"
+          }
+
+          select_identical_model_pack tiny release-assets/model-packs/tiny "release-assets/${tiny_model}"
+          select_identical_model_pack small release-assets/model-packs/small "release-assets/${small_model}"
+          select_identical_model_pack medium release-assets/model-packs/medium "release-assets/${medium_model}"
+
+          expected_android_aar="$(awk '$2 ~ /(^|\/)lw-ppocr-android-release\.aar$/ { print $1; exit }' "$android_source_checksums")"
+          expected_android_apk="$(awk '$2 ~ /(^|\/)demo-preview\.apk$/ { print $1; exit }' "$android_source_checksums")"
+          test -n "$expected_android_aar"
+          test -n "$expected_android_apk"
+          test "$(sha256sum "$android_aar_source" | awk '{print $1}')" = "$expected_android_aar"
+          test "$(sha256sum "$android_apk_source" | awk '{print $1}')" = "$expected_android_apk"
+          cp "$android_aar_source" "release-assets/$android_aar"
+          cp "$android_apk_source" "release-assets/$android_apk"
+
+          (
+            cd release-assets
+            # CPack writes the checksum beside the archive on its build host.
+            # Normalize only the text file line endings so GNU sha256sum does
+            # not treat a Windows CR as part of the archived file name.
+            sed -i 's/\r$//' "${windows_source}.sha256" "${linux_source}.sha256"
+            sha256sum -c "${windows_source}.sha256"
+            sha256sum -c "${linux_source}.sha256"
+            rm "${windows_source}.sha256" "${linux_source}.sha256"
+            if [[ "${windows_source}" != "${windows}" ]]; then
+              mv "${windows_source}" "${windows}"
+            fi
+            if [[ "${linux_source}" != "${linux}" ]]; then
+              mv "${linux_source}" "${linux}"
+            fi
+            sha256sum "${windows}" > "${windows}.sha256"
+            sha256sum "${linux}" > "${linux}.sha256"
+            mv ocr-demo.html "${wasm}"
+            mv lw-ppocr.js "${websdk}"
+            mv ocr-demo-small.html "${wasm_small}"
+            mv lw-ppocr-v6-small.js "${websdk_small}"
+            mv ocr-demo-medium.html "${wasm_medium}"
+            mv lw-ppocr-v6-medium.js "${websdk_medium}"
+            sha256sum "${wasm}" > "${wasm}.sha256"
+            sha256sum "${websdk}" > "${websdk}.sha256"
+            sha256sum "${wasm_small}" > "${wasm_small}.sha256"
+            sha256sum "${websdk_small}" > "${websdk_small}.sha256"
+            sha256sum "${wasm_medium}" > "${wasm_medium}.sha256"
+            sha256sum "${websdk_medium}" > "${websdk_medium}.sha256"
+            sha256sum -c "${nodewasm_source}.sha256"
+            rm "${nodewasm_source}.sha256"
+            if [[ "${nodewasm_source}" != "${nodewasm}" ]]; then
+              mv "${nodewasm_source}" "${nodewasm}"
+            fi
+            sha256sum "${nodewasm}" > "${nodewasm}.sha256"
+            sha256sum "${android_aar}" "${android_apk}" > "${android_checksums}"
+            (
+              cd java/windows-bundle
+              sha256sum -c SHA256SUMS.txt
+              zip -qr "${GITHUB_WORKSPACE}/release-assets/${java_windows}" .
+            )
+            (
+              cd java/linux-bundle
+              sha256sum -c SHA256SUMS.txt
+              tar -czf "${GITHUB_WORKSPACE}/release-assets/${java_linux}" .
+            )
+            (
+              cd java/macos-bundle
+              shasum -a 256 -c SHA256SUMS.txt
+              tar -czf "${GITHUB_WORKSPACE}/release-assets/${java_macos}" .
+            )
+            sha256sum "${java_windows}" > "${java_windows}.sha256"
+            sha256sum "${java_linux}" > "${java_linux}.sha256"
+            sha256sum "${java_macos}" > "${java_macos}.sha256"
+            python "${GITHUB_WORKSPACE}/tools/package_ppocrv6_models.py" \
+              --catalog "${GITHUB_WORKSPACE}/models/ppocrv6-models.json" \
+              --output "${GITHUB_WORKSPACE}/release-assets/${models}"
+            sha256sum "${models}" > "${models}.sha256"
+            sha256sum "${tiny_model}" > "${tiny_model}.sha256"
+            sha256sum "${small_model}" > "${small_model}.sha256"
+            sha256sum "${medium_model}" > "${medium_model}.sha256"
+          )
+
+          find release-assets -maxdepth 1 -type f -printf '%f\n' | sort
+
+      - name: Verify final release asset contract
+        shell: bash
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          python tools/verify_release_assets.py \
+            --manifest ci/release-assets.json \
+            --directory release-assets \
+            --version "${VERSION}" \
+            --strict
+
+      - name: Attest release artifacts
+        uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763 # v4.1.1
+        with:
+          subject-path: |
+            ${{ github.workspace }}/release-assets/*.zip
+            ${{ github.workspace }}/release-assets/*.tar.gz
+            ${{ github.workspace }}/release-assets/*.html
+            ${{ github.workspace }}/release-assets/*.js
+            ${{ github.workspace }}/release-assets/*.aar
+            ${{ github.workspace }}/release-assets/*.apk
+
+      - name: Publish GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          publish_flags=(--draft=false)
+          if [[ "${VERSION}" == *-* ]]; then
+            publish_flags+=(--prerelease)
+          else
+            publish_flags+=(--latest)
+          fi
+
+          python tools/verify_release_assets.py \
+            --manifest ci/release-assets.json \
+            --directory release-assets \
+            --version "${VERSION}" \
+            --strict
+
+          mapfile -t assets < <(find release-assets -maxdepth 1 -type f -print | sort)
+
+          if existing_draft="$(gh release view "${TAG}" --repo "${GITHUB_REPOSITORY}" \
+              --json isDraft --jq .isDraft 2>/dev/null)"; then
+            if [[ "${existing_draft}" != "true" ]]; then
+              echo "release ${TAG} already exists and is not a draft" >&2
+              exit 1
+            fi
+          else
+            gh release create "${TAG}" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --verify-tag \
+              --draft \
+              --generate-notes \
+              --title "${TAG} — lw.PPOCR.C Pure C OCR Runtime / 纯 C OCR 运行时"
+          fi
+
+          # Upload into a draft first so customers never see a partially
+          # populated Release. A failed run can safely resume the same draft.
+          gh release upload "${TAG}" "${assets[@]}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --clobber
+          gh release edit "${TAG}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            "${publish_flags[@]}"

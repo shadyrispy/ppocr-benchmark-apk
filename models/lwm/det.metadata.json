@@ -1,0 +1,13 @@
+{
+  "format": "LWM",
+  "format_version": "0.1",
+  "input": "/Users/esc/Documents/GenshinTools/tools/ppocr-bench/models/source/det.onnx",
+  "output": "/Users/esc/Documents/GenshinTools/tools/ppocr-bench/models/lwm/det.lwm",
+  "tensor_count": 408,
+  "node_count": 242,
+  "input_count": 1,
+  "output_count": 1,
+  "weight_size": 1713648,
+  "file_size": 1770448,
+  "checksum": "0xbb5b135c0135c513"
+}

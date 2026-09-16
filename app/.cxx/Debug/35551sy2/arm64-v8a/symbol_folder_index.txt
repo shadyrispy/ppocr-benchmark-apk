@@ -1,0 +1,1 @@
+/Users/esc/Documents/GenshinTools/tools/ppocr-bench/app/build/intermediates/cxx/Debug/35551sy2/obj/arm64-v8a

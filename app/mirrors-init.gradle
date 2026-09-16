@@ -1,0 +1,40 @@
+// Local-only repository mirror, applied with `gradle -I mirrors-init.gradle`.
+//
+// This machine cannot reach dl.google.com at all (DNS-level block, curl returns
+// 000 even outside any sandbox), so google() cannot resolve. Aliyun publishes a
+// faithful mirror of the Google Maven repo and measures ~70ms here.
+//
+// Deliberately NOT installed into ~/.gradle/init.d: that would change every
+// Gradle build on this machine, including the GenshinTools app itself.
+//
+// Repo speed check (2026-09-16):
+//   maven.aliyun.com/repository/google          200  12KB  0.07s  <- used
+//   maven.aliyun.com/nexus/.../google           200  12KB  0.37s
+//   mirrors.cloud.tencent.com, huaweicloud, tuna -> 404 / unreachable
+//   dl.google.com                               000  blocked
+
+def GOOGLE_MIRROR = 'https://maven.aliyun.com/repository/google'
+def PUBLIC_MIRROR = 'https://maven.aliyun.com/repository/public'
+
+beforeSettings { settings ->
+    settings.pluginManagement {
+        repositories {
+            maven { url GOOGLE_MIRROR }
+            maven { url PUBLIC_MIRROR }
+            gradlePluginPortal()
+        }
+    }
+}
+
+beforeProject { project ->
+    project.buildscript.repositories {
+        maven { url GOOGLE_MIRROR }
+        maven { url PUBLIC_MIRROR }
+        mavenCentral()
+    }
+    project.repositories {
+        maven { url GOOGLE_MIRROR }
+        maven { url PUBLIC_MIRROR }
+        mavenCentral()
+    }
+}

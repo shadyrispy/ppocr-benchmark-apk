@@ -1,0 +1,47 @@
+{
+  "det": {
+    "shape": [
+      1,
+      3,
+      960,
+      960
+    ],
+    "out_shape": [
+      1,
+      1,
+      960,
+      960
+    ],
+    "equivalent": true,
+    "absmax": 0.004039764404296875
+  },
+  "cls": {
+    "shape": [
+      1,
+      3,
+      80,
+      160
+    ],
+    "out_shape": [
+      1,
+      2
+    ],
+    "equivalent": true,
+    "absmax": 0.5005643963813782
+  },
+  "rec": {
+    "shape": [
+      1,
+      3,
+      48,
+      320
+    ],
+    "out_shape": [
+      1,
+      40,
+      6906
+    ],
+    "equivalent": true,
+    "absmax": 0.9335366487503052
+  }
+}

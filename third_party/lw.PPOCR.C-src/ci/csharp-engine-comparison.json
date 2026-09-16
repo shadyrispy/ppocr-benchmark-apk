@@ -1,0 +1,76 @@
+{
+  "schema_version": 2,
+  "name": "lw-ppocr-c-vs-simdpaddleocr-v2",
+  "simd_repository": "lxw112190/SimdPaddleOCR",
+  "simd_ref": "3e4192f2ec03b84701d3c5c1658e277fdaa7aa12",
+  "dataset": {
+    "generator_project": "test/Sdcb.SimdPaddleOCR.TestData",
+    "expected_images": 100,
+    "warmup_images": 1,
+    "measured_images": 99
+  },
+  "models": [
+    "tiny"
+  ],
+  "workers": [
+    1,
+    4
+  ],
+  "replicas": 3,
+  "profiles": {
+    "normalized-fixed320": {
+      "requested_isa": "avx2",
+      "sharp": {
+        "rec_policy": "fixed",
+        "rec_width": 320
+      },
+      "c": {
+        "rec_policy": "fixed",
+        "rec_width": 320
+      }
+    },
+    "normalized-adaptive960": {
+      "requested_isa": "avx2",
+      "sharp": {
+        "rec_policy": "lw-adaptive960",
+        "rec_width": 960
+      },
+      "c": {
+        "rec_policy": "adaptive960",
+        "rec_width": 960
+      }
+    },
+    "product": {
+      "requested_isa": "best",
+      "sharp": {
+        "rec_policy": "native-adaptive",
+        "rec_width": 320
+      },
+      "c": {
+        "rec_policy": "adaptive-max",
+        "rec_width": 960
+      }
+    }
+  },
+  "normalized_options": {
+    "reading_order": "horizontal",
+    "detector": {
+      "limit_side": 960,
+      "bitmap_threshold": 0.3,
+      "box_threshold": 0.6,
+      "unclip_ratio": 1.6,
+      "use_dilation": false,
+      "max_candidates": 1000
+    },
+    "classifier": {
+      "enabled": true,
+      "threshold": 0.9
+    }
+  },
+  "comparison_policy": {
+    "performance_gate": false,
+    "accuracy_gate": false,
+    "correctness_gate": true,
+    "ratios": "paired-within-replica"
+  }
+}

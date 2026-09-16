@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">lw.PPOCR.C Android Preview</string>
+    <string name="app_title">lw.PPOCR.C</string>
+    <string name="app_subtitle">Android ARM64  ·  离线文字识别</string>
+</resources>

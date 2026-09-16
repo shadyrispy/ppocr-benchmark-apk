@@ -1,0 +1,14 @@
+# ninja log v5
+3	626	1789513580059901669	CMakeFiles/ppocr_bench.dir/backend_lw.cpp.o	2bf5b51e12aa7368
+3	704	1789513580138940581	CMakeFiles/ppocr_bench.dir/backend_mnn.cpp.o	7f896f2045a9647f
+3	799	1789513580229881987	CMakeFiles/ppocr_bench.dir/backend_ncnn.cpp.o	bdde1a3c40a1bf37
+661	796	1789502226951033154	/Users/esc/Documents/GenshinTools/tools/ppocr-bench/app/build/intermediates/cxx/Debug/35551sy2/obj/arm64-v8a/libppocr_bench.so	f3c51d51a2cb7255
+2	699	1789513580134918151	CMakeFiles/ppocr_bench.dir/bench_common.cpp.o	312eaa194f1edbdc
+3	775	1789513580208885047	CMakeFiles/ppocr_bench.dir/det_pipeline.cpp.o	c5fac94bae94789d
+3	898	1789513580334501603	CMakeFiles/ppocr_bench.dir/jni_bridge.cpp.o	bef82234a068ea9e
+3	1004	1789513580439306386	CMakeFiles/ppocr_bench.dir/backend_ort.cpp.o	201bd02b3ff44a55
+2	547	1789513648143783436	/Users/esc/Documents/GenshinTools/tools/ppocr-bench/app/build/intermediates/cxx/Debug/35551sy2/obj/arm64-v8a/libppocr_bench.so	b8668228f05791e6
+2	878	1789516271120080669	CMakeFiles/ppocr_bench.dir/backend_ort.cpp.o	201bd02b3ff44a55
+878	1324	1789516271388512430	/Users/esc/Documents/GenshinTools/tools/ppocr-bench/app/build/intermediates/cxx/Debug/35551sy2/obj/arm64-v8a/libppocr_bench.so	b8668228f05791e6
+2	685	1789516822542283804	CMakeFiles/ppocr_bench.dir/jni_bridge.cpp.o	bef82234a068ea9e
+685	1130	1789516822853481766	/Users/esc/Documents/GenshinTools/tools/ppocr-bench/app/build/intermediates/cxx/Debug/35551sy2/obj/arm64-v8a/libppocr_bench.so	b8668228f05791e6

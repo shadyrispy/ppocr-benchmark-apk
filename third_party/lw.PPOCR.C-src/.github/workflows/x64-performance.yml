@@ -1,0 +1,614 @@
+name: Native x64 OCR Performance
+
+on:
+  workflow_dispatch:
+    inputs:
+      warmup:
+        description: Benchmark warm-up calls per case
+        required: false
+        default: "3"
+      iterations:
+        description: Benchmark measured calls per case
+        required: false
+        default: "10"
+      profile_iterations:
+        description: Instrumented profile iterations per case
+        required: false
+        default: "3"
+      case_set:
+        description: Parallel case matrix
+        required: false
+        type: choice
+        options:
+          - compact
+          - full
+        default: full
+
+permissions:
+  contents: read
+
+jobs:
+  prepare-assets:
+    name: Prepare architecture-independent OCR assets
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-converter.txt
+      - name: Install converter dependencies
+        run: python -m pip install -r requirements-converter.txt
+      - name: Convert models and fixtures once
+        run: |
+          set -euo pipefail
+          cmake -S . -B build-assets -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_TESTING=OFF \
+            -DLW_BUILD_HTTP_DEMO=OFF
+          cmake --build build-assets --parallel 2 --target \
+            convert_rec_model convert_cls_model convert_det_model \
+            rec_demo_fixture det_demo_fixture
+          mkdir -p prepared-assets
+          cp build-assets/models/rec.lwm prepared-assets/
+          cp build-assets/models/rec-lwm.json prepared-assets/
+          cp build-assets/models/cls.lwm prepared-assets/
+          cp build-assets/models/cls-lwm.json prepared-assets/
+          cp build-assets/models/det.lwm prepared-assets/
+          cp build-assets/models/det-lwm.json prepared-assets/
+          cp build-assets/models/sample-crop.ppm prepared-assets/
+          cp build-assets/models/sample.ppm prepared-assets/
+          cp models/ppocrv6-tiny/ppocr_keys.txt prepared-assets/
+          (cd prepared-assets && sha256sum \
+            rec.lwm rec-lwm.json cls.lwm cls-lwm.json \
+            det.lwm det-lwm.json sample-crop.ppm sample.ppm \
+            ppocr_keys.txt > SHA256SUMS)
+      - uses: actions/upload-artifact@v7
+        with:
+          name: prepared-x64-ocr-assets
+          path: prepared-assets/
+          if-no-files-found: error
+          retention-days: 7
+
+  native-x64:
+    name: Native Windows x64 profile
+    needs: prepare-assets
+    runs-on: windows-2022
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-converter.txt
+      - name: Install Python test and converter dependencies
+        run: python -m pip install -r requirements-converter.txt
+      - name: Download prepared OCR assets
+        uses: actions/download-artifact@v8
+        with:
+          name: prepared-x64-ocr-assets
+          path: .ci/preconverted
+      - name: Verify prepared OCR assets
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($line in Get-Content -LiteralPath '.ci/preconverted/SHA256SUMS') {
+            $parts = $line.Trim() -split ' +', 2
+            if ($parts.Count -ne 2) { throw "invalid checksum line: $line" }
+            $name = $parts[1].TrimStart('*')
+            $actual = (Get-FileHash -LiteralPath ".ci/preconverted/$name" -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($actual -ne $parts[0].ToLowerInvariant()) {
+              throw "SHA-256 mismatch: $name"
+            }
+          }
+      - name: Record native build environment
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force -Path .ci | Out-Null
+          $cpu = (Get-CimInstance Win32_Processor | Select-Object -First 1 -ExpandProperty Name)
+          $cl = Get-Command cl.exe -ErrorAction SilentlyContinue
+          $compiler = if ($null -ne $cl) { $cl.Source } else { 'Visual Studio 17 2022 (resolved by CMake)' }
+          @(
+            'project=lw.PPOCR.C'
+            "commit=$env:GITHUB_SHA"
+            'verification=native-github-hosted-windows-x64-runner'
+            'requested_architecture=x64'
+            "machine=$env:PROCESSOR_ARCHITECTURE"
+            "cpu=$cpu"
+            "compiler=$compiler"
+            "cmake=$((cmake --version | Select-Object -First 1))"
+            "logical_processors=$env:NUMBER_OF_PROCESSORS"
+          ) | Set-Content -LiteralPath .ci/BUILD-ENVIRONMENT-x64.txt -Encoding utf8
+          Get-Content -LiteralPath .ci/BUILD-ENVIRONMENT-x64.txt
+      - name: Configure and build profile drivers
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $configureArgs = @(
+            '-S', '.', '-B', 'build-x64',
+            '-G', 'Visual Studio 17 2022', '-A', 'x64',
+            '-DBUILD_TESTING=ON',
+            '-DLW_BUILD_HTTP_DEMO=OFF',
+            '-DLW_BUILD_CSHARP_DEMOS=OFF',
+            "-DLW_PRECONVERTED_ASSETS_DIR=$env:GITHUB_WORKSPACE/.ci/preconverted",
+            "-DLW_BUILD_ENVIRONMENT_FILE=$env:GITHUB_WORKSPACE/.ci/BUILD-ENVIRONMENT-x64.txt"
+          )
+          cmake @configureArgs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cmake --build build-x64 --config Release --parallel 2 --target `
+            full-ocr-profile-driver full-ocr-intra-benchmark simd-backend-driver `
+            packed-conv1x1-benchmark-driver conv3x3-stride2-benchmark-driver lw-ocr-ppm
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Require AVX2 backend
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $output = & build-x64/Release/simd-backend-driver.exe
+          $output | Write-Output
+          $line = $output | Where-Object { $_.StartsWith('SIMD backend:') } | Select-Object -First 1
+          if (-not $line) { throw 'cannot parse SIMD backend' }
+          $backend = $line.Substring('SIMD backend:'.Length).Trim().ToLowerInvariant()
+          if ($backend -ne 'avx2') { throw "x64 profile requires AVX2, got $backend" }
+      - name: Run x64 backend smoke test
+        shell: pwsh
+        run: |
+          ctest --test-dir build-x64 -C Release --output-on-failure -R '^simd_backend_detection$'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Collect AVX2 FMA Conv1x1 A/B benchmark
+        shell: pwsh
+        env:
+          FMA_ITERATIONS: ${{ inputs.iterations }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force -Path x64-fma-results | Out-Null
+          $features = & build-x64/Release/simd-backend-driver.exe
+          if (($features -join "`n") -notmatch "avx2_fma=1") {
+            "AVX2+FMA is unavailable on this runner; candidate benchmark skipped." |
+              Set-Content -LiteralPath x64-fma-results/SKIPPED.txt -Encoding utf8
+            "### Conv1x1 AVX2+FMA A/B" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+            "- skipped: runner does not report avx2_fma=1" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+            exit 0
+          }
+          $driver = (Resolve-Path 'build-x64/Release/packed-conv1x1-benchmark-driver.exe').Path
+          foreach ($width in @(320, 960)) {
+            $raw = & $driver $width $env:FMA_ITERATIONS
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            $json = ($raw -join "`n") | ConvertFrom-Json
+            if ($json.schema_version -ne 1) { throw "unexpected benchmark schema for width $width" }
+            if ($json.backend -ne 'avx2') { throw "FMA benchmark requires AVX2, got $($json.backend)" }
+            $fmaCases = @($json.cases | Where-Object { $_.PSObject.Properties.Name -contains 'fma_ms' })
+            if ($fmaCases.Count -ne $json.cases.Count) { throw "FMA fields missing for width $width" }
+            $ratios = @($fmaCases | ForEach-Object { [double]$_.avx2_ms / [double]$_.fma_ms })
+            $errors = @($fmaCases | ForEach-Object { [double]$_.fma_max_abs_error })
+            $rankedCases = @($fmaCases | ForEach-Object {
+              [pscustomobject]@{ name = $_.name; avx2_over_fma = [double]$_.avx2_ms / [double]$_.fma_ms }
+            })
+            $slowestCases = @($rankedCases | Sort-Object avx2_over_fma | Select-Object -First 3)
+            $fastestCases = @($rankedCases | Sort-Object avx2_over_fma -Descending | Select-Object -First 3)
+            $slowestText = ($slowestCases | ForEach-Object { "$($_.name)=$([math]::Round($_.avx2_over_fma, 3))x" }) -join ", "
+            $fastestText = ($fastestCases | ForEach-Object { "$($_.name)=$([math]::Round($_.avx2_over_fma, 3))x" }) -join ", "
+            $sortedRatios = @($ratios | Sort-Object)
+            $summary = [pscustomobject]@{
+              width = $width
+              iterations = [int]$json.iterations
+              cases = $fmaCases.Count
+              median_avx2_over_fma = $sortedRatios[[int][math]::Floor(($sortedRatios.Count - 1) / 2)]
+              minimum_avx2_over_fma = ($ratios | Measure-Object -Minimum).Minimum
+              maximum_avx2_over_fma = ($ratios | Measure-Object -Maximum).Maximum
+              maximum_absolute_error = ($errors | Measure-Object -Maximum).Maximum
+              slowest_cases = $slowestText
+              fastest_cases = $fastestText
+            }
+            $json | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath "x64-fma-results/conv1x1-$width.json" -Encoding utf8
+            $summary | ConvertTo-Json | Set-Content -LiteralPath "x64-fma-results/conv1x1-$width-summary.json" -Encoding utf8
+            "### Conv1x1 AVX2+FMA A/B ($width)" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+            "- cases: $($summary.cases)" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+            "- median AVX2/FMA: $([double]$summary.median_avx2_over_fma)" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+            "- range: $([double]$summary.minimum_avx2_over_fma) - $([double]$summary.maximum_avx2_over_fma)" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+            "- max absolute error: $([double]$summary.maximum_absolute_error)" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+            "- slowest shapes: $($summary.slowest_cases)" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+            "- fastest shapes: $($summary.fastest_cases)" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          }
+      - name: Build experimental FMA OCR driver
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force -Path x64-fma-ocr-results | Out-Null
+          $features = & build-x64/Release/simd-backend-driver.exe
+          if (($features -join "`n") -notmatch "avx2_fma=1") {
+            'AVX2+FMA is unavailable on this runner; end-to-end experiment skipped.' |
+              Set-Content -LiteralPath x64-fma-ocr-results/SKIPPED.txt -Encoding utf8
+            exit 0
+          }
+          $configureArgs = @(
+            '-S', '.', '-B', 'build-x64-fma',
+            '-G', 'Visual Studio 17 2022', '-A', 'x64',
+            '-DBUILD_TESTING=ON',
+            '-DLW_BUILD_HTTP_DEMO=OFF',
+            '-DLW_BUILD_CSHARP_DEMOS=OFF',
+            '-DLW_EXPERIMENTAL_AVX2_FMA_DISPATCH=ON',
+            "-DLW_PRECONVERTED_ASSETS_DIR=$env:GITHUB_WORKSPACE/.ci/preconverted"
+          )
+          cmake @configureArgs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cmake --build build-x64-fma --config Release --parallel 2 --target full-ocr-intra-benchmark lw-ocr-ppm packed-conv1x1-benchmark-driver packed-matmul-benchmark-driver conv3x3-stride2-benchmark-driver
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ctest --test-dir build-x64-fma -C Release --output-on-failure -R '^(packed_conv1x1_benchmark_smoke|packed_matmul_benchmark_smoke|conv3x3_stride2_benchmark_smoke)$'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $defaultConv3x3 = (Resolve-Path 'build-x64/Release/conv3x3-stride2-benchmark-driver.exe').Path
+          $fmaConv3x3 = (Resolve-Path 'build-x64-fma/Release/conv3x3-stride2-benchmark-driver.exe').Path
+          foreach ($width in @(320, 960)) {
+            $baseline = ((& $defaultConv3x3 $width 3) -join "`n") | ConvertFrom-Json
+            $candidate = ((& $fmaConv3x3 $width 3) -join "`n") | ConvertFrom-Json
+            $baselineCase = @($baseline.cases | Where-Object { $_.name -eq 'rec-node6-24x48' })[0]
+            $candidateCase = @($candidate.cases | Where-Object { $_.name -eq 'rec-node6-24x48' })[0]
+            if ($null -eq $baselineCase -or $null -eq $candidateCase) { throw "Node 6 case missing for width $width" }
+            if ($baselineCase.checksum -ne $candidateCase.checksum) { throw "Node 6 checksum changed for width $width" }
+            $comparison = [pscustomobject]@{
+              schema_version = 1
+              target_width = $width
+              case = 'rec-node6-24x48'
+              baseline = $baselineCase
+              candidate = $candidateCase
+              baseline_over_candidate_packed = [double]$baselineCase.packed_ms / [double]$candidateCase.packed_ms
+              checksum = $candidateCase.checksum
+            }
+            $comparison | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath "x64-fma-results/conv3x3-$width.json" -Encoding utf8
+            "### Conv3x3 Node 6 AVX2+FMA A/B ($width)" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+            "- packed AVX2: $([double]$baselineCase.packed_ms) ms" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+            "- packed FMA: $([double]$candidateCase.packed_ms) ms" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+            "- AVX2/FMA: $([double]$comparison.baseline_over_candidate_packed)x" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+            "- checksum: $($comparison.checksum)" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          }
+      - name: Compare default and experimental FMA OCR
+        shell: pwsh
+        env:
+          FMA_WARMUP: ${{ inputs.warmup }}
+          FMA_ITERATIONS: ${{ inputs.iterations }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (Test-Path -LiteralPath x64-fma-ocr-results/SKIPPED.txt) {
+            Get-Content -LiteralPath x64-fma-ocr-results/SKIPPED.txt |
+              Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+            exit 0
+          }
+          $baseline = (Resolve-Path 'build-x64/Release/full-ocr-intra-benchmark.exe').Path
+          $candidate = (Resolve-Path 'build-x64-fma/Release/full-ocr-intra-benchmark.exe').Path
+          $cases = @(
+            @{ Name = 'workers1-det1'; Workers = 1; DetThreads = 1 },
+            @{ Name = 'workers4-det4'; Workers = 4; DetThreads = 4 }
+          )
+          foreach ($case in $cases) {
+            $jsonOutput = "x64-fma-ocr-results/$($case.Name).json"
+            $markdownOutput = "x64-fma-ocr-results/$($case.Name).md"
+            python tools/compare_ocr_dispatch_profiles.py `
+              --baseline-driver $baseline `
+              --candidate-driver $candidate `
+              --det .ci/preconverted/det.lwm `
+              --cls .ci/preconverted/cls.lwm `
+              --rec .ci/preconverted/rec.lwm `
+              --dictionary .ci/preconverted/ppocr_keys.txt `
+              --image .ci/preconverted/sample.ppm `
+              --warmup $env:FMA_WARMUP `
+              --iterations $env:FMA_ITERATIONS `
+              --repeats 2 `
+              --workers $case.Workers `
+              --target-width 960 `
+              --det-threads $case.DetThreads `
+              --json-output $jsonOutput `
+              --markdown-output $markdownOutput
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            Get-Content -LiteralPath $markdownOutput |
+              Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          }
+      - name: Check FMA quality on generated corpus
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (Test-Path -LiteralPath x64-fma-ocr-results/SKIPPED.txt) {
+            Get-Content -LiteralPath x64-fma-ocr-results/SKIPPED.txt |
+              Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+            exit 0
+          }
+          $dataset = 'build-local-data/lw-generated-ocr'
+          $fontArgs = @()
+          foreach ($font in @('C:\Windows\Fonts\msyh.ttc', 'C:\Windows\Fonts\simsun.ttc')) {
+            if (Test-Path -LiteralPath $font) { $fontArgs += @('--font', $font) }
+          }
+          if ($fontArgs.Count -eq 0) { throw 'no CJK font found for generated OCR corpus' }
+          python tools/generate_ocr_dataset.py `
+            --output $dataset `
+            --count 100 `
+            --seed 20260907 `
+            --format jpg `
+            @fontArgs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $common = @(
+            '--dataset', $dataset,
+            '--detector', '.ci/preconverted/det.lwm',
+            '--classifier', '.ci/preconverted/cls.lwm',
+            '--recognizer', '.ci/preconverted/rec.lwm',
+            '--dictionary', '.ci/preconverted/ppocr_keys.txt',
+            '--rec-max-width', '960',
+            '--timeout-seconds', '180'
+          )
+          python tools/evaluate_ocr_dataset.py `
+            @common `
+            '--driver' 'build-x64/Release/lw-ocr-ppm.exe' `
+            '--model-name' 'tiny-default-100' `
+            '--output' 'x64-fma-ocr-results/tiny-default-100.json'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python tools/evaluate_ocr_dataset.py `
+            @common `
+            '--driver' 'build-x64-fma/Release/lw-ocr-ppm.exe' `
+            '--model-name' 'tiny-fma-100' `
+            '--output' 'x64-fma-ocr-results/tiny-fma-100.json'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python tools/compare_ocr_dataset_reports.py `
+            --baseline 'x64-fma-ocr-results/tiny-default-100.json' `
+            --candidate 'x64-fma-ocr-results/tiny-fma-100.json' `
+            --output 'x64-fma-ocr-results/tiny-fma-accuracy-comparison.json'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python tools/check_ocr_dataset_regression.py `
+            --baseline 'x64-fma-ocr-results/tiny-default-100.json' `
+            --candidate 'x64-fma-ocr-results/tiny-fma-100.json' `
+            --max-f1-drop 0.005 `
+            --max-exact-drop 0.005 `
+            --max-cer-increase 0.005 `
+            --output 'x64-fma-ocr-results/tiny-fma-accuracy-regression.json'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          '### FMA 100-image quality parity' | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          Get-Content -LiteralPath 'x64-fma-ocr-results/tiny-fma-accuracy-comparison.json' |
+            Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+      - name: Collect native OCR profile
+        shell: pwsh
+        env:
+          PROFILE_WARMUP: ${{ inputs.warmup }}
+          PROFILE_ITERATIONS: ${{ inputs.iterations }}
+          PROFILE_ITERATIONS_INSTRUMENTED: ${{ inputs.profile_iterations }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ('${{ inputs.case_set }}' -eq 'compact') {
+            $cases = @('1:1', '4:1', '1:4', '4:4')
+          } else {
+            $cases = @('1:1', '2:1', '4:1', '1:2', '2:2', '4:2', '1:4', '2:4', '4:4')
+          }
+          $caseArgs = @()
+          foreach ($case in $cases) { $caseArgs += @('--case', $case) }
+          $profileDriver = (Resolve-Path 'build-x64/Release/full-ocr-profile-driver.exe').Path
+          $benchmarkDriver = (Resolve-Path 'build-x64/Release/full-ocr-intra-benchmark.exe').Path
+          python tools/collect_native_ocr_profile.py `
+            --profile-driver $profileDriver `
+            --benchmark-driver $benchmarkDriver `
+            --det .ci/preconverted/det.lwm `
+            --cls .ci/preconverted/cls.lwm `
+            --rec .ci/preconverted/rec.lwm `
+            --dictionary .ci/preconverted/ppocr_keys.txt `
+            --image .ci/preconverted/sample.ppm `
+            --variant tiny `
+            --target-width 960 `
+            --warmup $env:PROFILE_WARMUP `
+            --iterations $env:PROFILE_ITERATIONS `
+            --profile-iterations $env:PROFILE_ITERATIONS_INSTRUMENTED `
+            --expected-backend avx2 `
+            --require-rss `
+            --commit $env:GITHUB_SHA `
+            --summary-name x64-profile-summary.json `
+            --output x64-profile-results `
+            @caseArgs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Get-Content -LiteralPath x64-profile-results/SUMMARY.md | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+      - uses: actions/upload-artifact@v7
+        with:
+          name: lw-ppocr-x64-profile-results-${{ github.sha }}
+          path: x64-profile-results/
+          if-no-files-found: error
+          retention-days: 30
+      - uses: actions/upload-artifact@v7
+        with:
+          name: lw-ppocr-x64-fma-results-${{ github.sha }}
+          path: x64-fma-results/
+          if-no-files-found: error
+          retention-days: 30
+      - uses: actions/upload-artifact@v7
+        with:
+          name: lw-ppocr-x64-fma-ocr-results-${{ github.sha }}
+          path: x64-fma-ocr-results/
+          if-no-files-found: error
+          retention-days: 30
+
+  resident-aot:
+    name: Native x64 Resident A/B
+    needs: prepare-assets
+    runs-on: windows-2022
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-converter.txt
+      - name: Install Python test and converter dependencies
+        run: python -m pip install -r requirements-converter.txt
+      - name: Download prepared OCR assets
+        uses: actions/download-artifact@v8
+        with:
+          name: prepared-x64-ocr-assets
+          path: .ci/preconverted
+      - name: Verify prepared OCR assets
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($line in Get-Content -LiteralPath '.ci/preconverted/SHA256SUMS') {
+            $parts = $line.Trim() -split ' +', 2
+            if ($parts.Count -ne 2) { throw "invalid checksum line: $line" }
+            $name = $parts[1].TrimStart('*')
+            $actual = (Get-FileHash -LiteralPath ".ci/preconverted/$name" -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($actual -ne $parts[0].ToLowerInvariant()) {
+              throw "SHA-256 mismatch: $name"
+            }
+          }
+      - name: Configure compact and resident builds
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $common = @(
+            '-S', '.',
+            '-G', 'Visual Studio 17 2022', '-A', 'x64',
+            '-DBUILD_TESTING=ON',
+            '-DLW_BUILD_HTTP_DEMO=OFF',
+            '-DLW_BUILD_CSHARP_DEMOS=OFF',
+            "-DLW_PRECONVERTED_ASSETS_DIR=$env:GITHUB_WORKSPACE/.ci/preconverted"
+          )
+          cmake @common -B build-x64-compact -DLW_REC_RESIDENT_WIDTHS=OFF
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cmake @common -B build-x64-resident -DLW_REC_RESIDENT_WIDTHS=ON
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Build compact and resident benchmark drivers
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          cmake --build build-x64-compact --config Release --parallel 2 --target full-ocr-intra-benchmark
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cmake --build build-x64-resident --config Release --parallel 2 --target full-ocr-profile-driver full-ocr-intra-benchmark
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Run resident profile gate
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          ctest --test-dir build-x64-resident -C Release --output-on-failure -R '^full_ocr_operator_profile$'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Compare compact and resident profiles
+        shell: pwsh
+        env:
+          AOT_WARMUP: ${{ inputs.warmup }}
+          AOT_ITERATIONS: ${{ inputs.iterations }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force -Path x64-resident-results | Out-Null
+          $compactDriver = (Resolve-Path 'build-x64-compact/Release/full-ocr-intra-benchmark.exe').Path
+          $residentDriver = (Resolve-Path 'build-x64-resident/Release/full-ocr-intra-benchmark.exe').Path
+          python tools/compare_rec_runtime_profiles.py `
+            --compact-driver $compactDriver `
+            --performance-driver $residentDriver `
+            --det .ci/preconverted/det.lwm `
+            --cls .ci/preconverted/cls.lwm `
+            --rec .ci/preconverted/rec.lwm `
+            --dictionary .ci/preconverted/ppocr_keys.txt `
+            --image .ci/preconverted/sample.ppm `
+            --warmup $env:AOT_WARMUP `
+            --iterations $env:AOT_ITERATIONS `
+            --workers 4 `
+            --target-width 960 `
+            --det-threads 4 `
+            --json-output x64-resident-results/compact-vs-resident.json `
+            --markdown-output x64-resident-results/compact-vs-resident.md
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Get-Content -LiteralPath x64-resident-results/compact-vs-resident.md | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+      - uses: actions/upload-artifact@v7
+        with:
+          name: lw-ppocr-x64-resident-results-${{ github.sha }}
+          path: x64-resident-results/
+          if-no-files-found: error
+          retention-days: 30
+
+  prepared-dispatch:
+    name: Native x64 Prepared Execution A/B
+    needs: prepare-assets
+    runs-on: windows-2022
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-converter.txt
+      - name: Install Python test and converter dependencies
+        run: python -m pip install -r requirements-converter.txt
+      - name: Download prepared OCR assets
+        uses: actions/download-artifact@v8
+        with:
+          name: prepared-x64-ocr-assets
+          path: .ci/preconverted
+      - name: Verify prepared OCR assets
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($line in Get-Content -LiteralPath '.ci/preconverted/SHA256SUMS') {
+            $parts = $line.Trim() -split ' +', 2
+            if ($parts.Count -ne 2) { throw "invalid checksum line: $line" }
+            $name = $parts[1].TrimStart('*')
+            $actual = (Get-FileHash -LiteralPath ".ci/preconverted/$name" -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($actual -ne $parts[0].ToLowerInvariant()) {
+              throw "SHA-256 mismatch: $name"
+            }
+          }
+      - name: Configure default and prepared builds
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $common = @(
+            '-S', '.',
+            '-G', 'Visual Studio 17 2022', '-A', 'x64',
+            '-DBUILD_TESTING=ON',
+            '-DLW_BUILD_HTTP_DEMO=OFF',
+            '-DLW_BUILD_CSHARP_DEMOS=OFF',
+            "-DLW_PRECONVERTED_ASSETS_DIR=$env:GITHUB_WORKSPACE/.ci/preconverted"
+          )
+          cmake @common -B build-x64-default -DLW_EXPERIMENTAL_PREPARED_EXECUTION=OFF
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cmake @common -B build-x64-prepared -DLW_EXPERIMENTAL_PREPARED_EXECUTION=ON
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Build and run prepared execution gates
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          cmake --build build-x64-default --config Release --parallel 2 --target full-ocr-intra-benchmark
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cmake --build build-x64-prepared --config Release --parallel 2 --target full-ocr-profile-driver full-ocr-intra-benchmark
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ctest --test-dir build-x64-prepared -C Release --output-on-failure -R '^full_ocr_operator_profile$'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Compare default and prepared execution
+        shell: pwsh
+        env:
+          PREPARED_WARMUP: ${{ inputs.warmup }}
+          PREPARED_ITERATIONS: ${{ inputs.iterations }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force -Path x64-prepared-results | Out-Null
+          $defaultDriver = (Resolve-Path 'build-x64-default/Release/full-ocr-intra-benchmark.exe').Path
+          $preparedDriver = (Resolve-Path 'build-x64-prepared/Release/full-ocr-intra-benchmark.exe').Path
+          python tools/compare_ocr_dispatch_profiles.py `
+            --baseline-driver $defaultDriver `
+            --candidate-driver $preparedDriver `
+            --det .ci/preconverted/det.lwm `
+            --cls .ci/preconverted/cls.lwm `
+            --rec .ci/preconverted/rec.lwm `
+            --dictionary .ci/preconverted/ppocr_keys.txt `
+            --image .ci/preconverted/sample.ppm `
+            --warmup $env:PREPARED_WARMUP `
+            --iterations $env:PREPARED_ITERATIONS `
+            --repeats 3 `
+            --workers 4 `
+            --target-width 960 `
+            --det-threads 4 `
+            --json-output x64-prepared-results/default-vs-prepared.json `
+            --markdown-output x64-prepared-results/default-vs-prepared.md `
+            --title 'Default vs Prepared Execution OCR' `
+            --baseline-label Default `
+            --candidate-label Prepared
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Get-Content -LiteralPath x64-prepared-results/default-vs-prepared.md | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+      - uses: actions/upload-artifact@v7
+        with:
+          name: lw-ppocr-x64-prepared-results-${{ github.sha }}
+          path: x64-prepared-results/
+          if-no-files-found: error
+          retention-days: 30

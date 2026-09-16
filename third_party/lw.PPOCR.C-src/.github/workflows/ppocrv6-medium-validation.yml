@@ -1,0 +1,134 @@
+name: ppocrv6-medium-validation
+
+on:
+  workflow_call:
+    inputs:
+      expected_full_text_sha256_override:
+        required: false
+        type: string
+        default: ""
+      runtime_version:
+        required: false
+        type: string
+        default: "0.2.0-preview.1"
+  push:
+    branches:
+      - main
+    paths:
+      - "CMakeLists.txt"
+      - "converter/**"
+      - "models/ppocrv6-medium/**"
+      - "models/ppocrv6-shared/**"
+      - "models/ppocrv6-tiny/cls.onnx"
+      - "models/ppocrv6-models.json"
+      - "tools/compare_small_det_execution.py"
+      - "tools/compare_small_rec_execution.py"
+      - "tools/convert_medium_det_experimental.py"
+      - "tools/convert_medium_rec_experimental.py"
+      - "tools/resolve_medium_validation_contract.py"
+      - "tools/run_medium_validation.py"
+      - "tools/package_ppocrv6_runtime.py"
+      - "tools/validate_runtime_model_pack.py"
+      - "tools/validate_model_catalog.py"
+      - "tests/test_medium_contracts.py"
+      - "tests/test_model_catalog.py"
+      - "requirements-converter.txt"
+      - "ci/ppocrv6-medium-validation.json"
+      - ".github/workflows/ppocrv6-medium-validation.yml"
+  schedule:
+    - cron: "0 3 * * 3"
+  workflow_dispatch:
+    inputs:
+      expected_full_text_sha256_override:
+        description: "Optional Medium full OCR text SHA-256 override"
+        required: false
+        default: ""
+        type: string
+      runtime_version:
+        description: "Model-pack revision recorded in manifest"
+        required: false
+        default: "0.2.0-preview.1"
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ppocrv6-medium-validation-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Medium analysis validation (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-2022, ubuntu-22.04]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-converter.txt
+      - name: Install converter dependencies
+        run: python -m pip install -r requirements-converter.txt
+      - name: Resolve runtime model revision
+        id: runtime
+        shell: bash
+        env:
+          REQUESTED_VERSION: ${{ inputs.runtime_version }}
+        run: |
+          set -euo pipefail
+          runtime_version="${REQUESTED_VERSION}"
+          if [[ -z "${runtime_version}" ]]; then runtime_version="0.2.0-preview.1"; fi
+          echo "version=${runtime_version}" >> "${GITHUB_OUTPUT}"
+      - name: Resolve Medium validation contract
+        shell: bash
+        env:
+          EXPECTED_TEXT_SHA256_OVERRIDE: ${{ inputs.expected_full_text_sha256_override }}
+        run: >-
+          python tools/resolve_medium_validation_contract.py
+          --contract ci/ppocrv6-medium-validation.json
+          --expected-full-text-sha256-override "$EXPECTED_TEXT_SHA256_OVERRIDE"
+      - name: Configure Windows
+        if: runner.os == 'Windows'
+        shell: bash
+        run: >-
+          cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+          -DBUILD_TESTING=ON
+      - name: Configure Linux
+        if: runner.os == 'Linux'
+        run: >-
+          cmake -S . -B build -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DBUILD_TESTING=ON
+      - name: Build Medium validation targets
+        run: >-
+          cmake --build build --config Release --parallel 2 --target
+          det-graph-driver rec-graph-driver lw-ocr-ppm test-dynamic-reshape
+      - name: Run repository contract tests
+        run: >-
+          ctest --test-dir build -C Release --output-on-failure
+          -R "model_analysis|dynamic_reshape_contract"
+      - name: Run Medium analysis validation
+        shell: bash
+        env:
+          EXPECTED_TEXT_SHA256_OVERRIDE: ${{ inputs.expected_full_text_sha256_override }}
+        run: >-
+          python tools/run_medium_validation.py
+          --contract ci/ppocrv6-medium-validation.json
+          --build-dir build
+          --output-dir build/medium-validation-report
+          --runtime-version "${{ steps.runtime.outputs.version }}"
+          --expected-full-text-sha256-override "$EXPECTED_TEXT_SHA256_OVERRIDE"
+      - name: Upload Medium validation report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: ppocrv6-medium-validation-${{ matrix.os }}
+          path: build/medium-validation-report
+          if-no-files-found: warn
+          retention-days: 14

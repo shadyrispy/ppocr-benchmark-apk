@@ -1,0 +1,60 @@
+{
+  "shapes": {
+    "det": [
+      1,
+      3,
+      960,
+      960
+    ],
+    "cls": [
+      1,
+      3,
+      80,
+      160
+    ],
+    "rec": [
+      1,
+      3,
+      48,
+      320
+    ]
+  },
+  "files": {
+    "det.input.f32": "4ef95984b941da57290f721c2b5d2f11f96c920518ff792d5de6d4c1dc9e41c7",
+    "det.expected.f32": "b3cb72e71b5f9e0943dac1ac567c5a5e7d9d7f7b2f27dd431a4ab7bc26897beb",
+    "cls.input.f32": "c941f77f7cadd0d784d795d77b8f7af44ec19913f2796cda7e5b0a867464761a",
+    "cls.expected.f32": "bab73c54a3d03c28bdd61375557b8d08c2b2c5d5b0e1c03f4a90ae2523276093",
+    "rec.input.f32": "0a4cd3546ce95c5eb27dec590fef29673f9d03c6d47d0cb9809fab29e5610553",
+    "rec.expected.f32": "b73e1054602ebd740f9bead1ce4b2ac0e727effe9d10f311413e4dfc95ceaeda",
+    "models/ort/det.static.onnx": "1d3ec883c1ecb4d4ed8cfdce3f049e60fc5667312995fd014995961f34353a62",
+    "models/ort/cls.static.onnx": "4c6889c8da93dc38cb6d5cffd0508e68e0ada84f0cac668f5402b6fba8fa8add",
+    "models/ort/rec.static.onnx": "afc82f1b3db33837d9ff85a43fb6fc618a3b962d2fed861096ddce33fb241b84",
+    "models/mnn/det.mnn": "7d17cf834738342faedc91b66317127e49d1a25a1f618f8b53747c6b1b93dd75",
+    "models/mnn/cls.mnn": "7e104bda933c28d61ce453e24e1ae76268d6aed645ab42bce72c3f6b87f66faa",
+    "models/mnn/rec.mnn": "61bed17b2dd239f0ea7d8d3c97483b65ff492f8dd3c18a65ed495974d10817eb",
+    "models/ncnn/det.ncnn.param": "189a62eb8b9606a67512d0f9f5ac86d75177edb54b2363491b4abba3fd7d17ec",
+    "models/ncnn/det.ncnn.bin": "5a313d332a810f0cb9475fb7145be5e8ca41d7515af50e1da6996b88dd5f8d4c",
+    "models/ncnn/cls.ncnn.param": "fcbba8f1b73e2c0cbe6475a7bee6a06ec55ffba7cf73fcc8de220f2544ebeea6",
+    "models/ncnn/cls.ncnn.bin": "c51032cf181e94f4b827301fafb5093a8e22a660ba8eb06a8f4eddc75b6cc327",
+    "models/ncnn/rec.ncnn.param": "d79ad6404c43fe8861013b54816674cbc761b206a3e5c492f8ad90602ae64079",
+    "models/ncnn/rec.ncnn.bin": "b190a20be9e4e48e049fb31319717824fdb8d1bedde0ce1bb837da4235b7028e",
+    "models/ort-int8/det.static.onnx": "7325dae71c87b78cd93c41914d7a19acc15bee91fe291f84e0adaf19a725a061",
+    "models/ort-int8/cls.static.onnx": "aec416280ff1687dafcd67fbc1f10f7fe264e4a0133bbf6ffe4b7ff509f7dcf6",
+    "models/ort-int8/rec.static.onnx": "eec06fc641709bcd117a7e9b103c90823b4794a7e7826276dc8caaa9668e29ab",
+    "models/ncnn-int8/det.ncnn.param": "e07f45f48ccf9e12c996f65b9f96f3377f6407762ff8c612dddf4b6005247df1",
+    "models/ncnn-int8/det.ncnn.bin": "17163c49444233f909dbc7b4c2b8053dcdca38321876ca95fec759a9168a9028",
+    "models/ncnn-int8/cls.ncnn.param": "69e92bccb9d162fe1450a8c970e2dda21d878021f1b6fcc6b7fad63c8de56b7d",
+    "models/ncnn-int8/cls.ncnn.bin": "72ba17efbc9e08ee6873b027f4f11dfe82be0961b10f8ae3f527dda9e77d0951",
+    "models/ncnn-int8/rec.ncnn.param": "f3bc51295a86569e5ce7ae189bbbf3ed1d24329dbdab7f802b264c100dbb866f",
+    "models/ncnn-int8/rec.ncnn.bin": "7f4d9f068ef107ce4c5d24b4281bfa491e7aba340c3fa90000b873beb0bcf6d7",
+    "models/lwm/det.lwm": "ba9164d371ac7003f90710c3106a344aeb906df2b0f1e7617fcf4608fa8cd66c",
+    "models/lwm/cls.lwm": "d426c23f4758c9f21c5cbd0550ea9b90f1e7c0dd0289e1541e9754dee2e6ed61",
+    "models/lwm/rec.lwm": "59440146ae64068b70441f9c16b5878ccba21e75b41cb27220c8d9cc2d61e0ae"
+  },
+  "image": {
+    "file": "sample.rgb",
+    "w": 500,
+    "h": 500,
+    "c": 3
+  }
+}

@@ -1,0 +1,254 @@
+import argparse
+import subprocess
+
+import numpy as np
+from onnx import helper
+from onnx.reference import ReferenceEvaluator
+
+
+def parse_output(text: str) -> dict[str, np.ndarray]:
+    results: dict[str, np.ndarray] = {}
+    for line in text.splitlines():
+        fields = line.split()
+        if len(fields) < 2:
+            raise AssertionError(f"invalid driver output line: {line!r}")
+        name = fields[0]
+        count = int(fields[1])
+        values = np.asarray([float(value) for value in fields[2:]], dtype=np.float32)
+        if values.size != count:
+            raise AssertionError(
+                f"{name}: declared {count} values but emitted {values.size}"
+            )
+        results[name] = values
+    return results
+
+
+def fill_values(
+    count: int, multiplier: int, modulus: int, offset: int, divisor: float
+) -> np.ndarray:
+    return np.asarray(
+        [(((index * multiplier) % modulus) - offset) / divisor for index in range(count)],
+        dtype=np.float32,
+    )
+
+
+def conv2d_reference(
+    input_values: np.ndarray,
+    weights: np.ndarray,
+    bias: np.ndarray | None,
+    strides: tuple[int, int],
+    dilations: tuple[int, int],
+    pads: tuple[int, int, int, int],
+    groups: int,
+) -> np.ndarray:
+    input_names = ["input", "weights"]
+    feeds = {"input": input_values, "weights": weights}
+    if bias is not None:
+        input_names.append("bias")
+        feeds["bias"] = bias
+    node = helper.make_node(
+        "Conv",
+        input_names,
+        ["output"],
+        kernel_shape=list(weights.shape[2:]),
+        strides=list(strides),
+        dilations=list(dilations),
+        pads=list(pads),
+        group=groups,
+    )
+    return ReferenceEvaluator(node, opsets={"": 11}).run(None, feeds)[0]
+
+
+def conv_transpose_reference(
+    input_values: np.ndarray, weights: np.ndarray, bias: np.ndarray
+) -> np.ndarray:
+    node = helper.make_node(
+        "ConvTranspose",
+        ["input", "weights", "bias"],
+        ["output"],
+        kernel_shape=[2, 2],
+        strides=[2, 2],
+        dilations=[1, 1],
+        pads=[0, 0, 0, 0],
+        group=1,
+    )
+    return ReferenceEvaluator(node, opsets={"": 11}).run(
+        None, {"input": input_values, "weights": weights, "bias": bias}
+    )[0]
+
+
+def expected_results() -> dict[str, np.ndarray]:
+    normal_input = fill_values(80, 5, 19, 9, 4.0).reshape(2, 2, 4, 5)
+    normal_weights = fill_values(54, 7, 17, 8, 6.0).reshape(3, 2, 3, 3)
+    normal_bias = np.asarray([0.25, -0.5, 1.0], dtype=np.float32)
+    stride2_input = fill_values(180, 11, 41, 20, 10.0).reshape(1, 2, 5, 18)
+    stride2_weights = fill_values(54, 13, 31, 15, 8.0).reshape(3, 2, 3, 3)
+    stride2_bias = np.asarray([-0.125, 0.625, -0.875], dtype=np.float32)
+    unit_conv_input = fill_values(285, 17, 43, 21, 11.0).reshape(1, 3, 5, 19)
+    unit_conv_weights = fill_values(54, 19, 37, 18, 9.0).reshape(2, 3, 3, 3)
+    unit_conv_bias = np.asarray([0.375, -0.625], dtype=np.float32)
+    unit_conv2x2_weights = fill_values(24, 23, 41, 20, 10.0).reshape(2, 3, 2, 2)
+    unit_conv2x2_four_weights = fill_values(48, 27, 43, 21, 8.0).reshape(4, 3, 2, 2)
+    grouped_input = fill_values(64, 3, 23, 11, 5.0).reshape(1, 4, 4, 4)
+    grouped_weights = fill_values(108, 11, 29, 14, 7.0).reshape(6, 2, 3, 3)
+    depthwise_input = fill_values(60, 13, 31, 15, 8.0).reshape(1, 3, 4, 5)
+    depthwise_weights = fill_values(18, 5, 13, 6, 5.0).reshape(3, 1, 3, 2)
+    unit_depthwise_input = fill_values(80, 17, 37, 18, 9.0).reshape(1, 2, 4, 10)
+    unit_depthwise_weights = fill_values(18, 7, 19, 9, 6.0).reshape(2, 1, 3, 3)
+    unit_depthwise_bias = np.asarray([0.375, -0.625], dtype=np.float32)
+    stride2x1_depthwise_input = fill_values(190, 23, 47, 23, 11.0).reshape(1, 2, 5, 19)
+    unit_depthwise5x5_input = fill_values(228, 29, 53, 26, 13.0).reshape(1, 2, 6, 19)
+    unit_depthwise5x5_weights = fill_values(50, 31, 47, 23, 12.0).reshape(2, 1, 5, 5)
+    unit_depthwise9x9_input = fill_values(380, 37, 67, 31, 17.0).reshape(1, 2, 10, 19)
+    unit_depthwise9x9_weights = fill_values(162, 41, 71, 33, 19.0).reshape(2, 1, 9, 9)
+    conv_axis_input = fill_values(342, 17, 43, 21, 11.0).reshape(1, 2, 9, 19)
+    conv7x1_weights = fill_values(56, 43, 79, 37, 17.0).reshape(4, 2, 7, 1)
+    conv1x7_weights = fill_values(56, 47, 83, 39, 19.0).reshape(4, 2, 1, 7)
+    conv5x1_weights = fill_values(40, 53, 89, 41, 23.0).reshape(4, 2, 5, 1)
+    conv1x5_weights = fill_values(40, 59, 97, 43, 29.0).reshape(4, 2, 1, 5)
+    conv_axis_bias = np.asarray([0.375, -0.625, 0.125, -0.875], dtype=np.float32)
+    asymmetric_input = fill_values(6, 3, 11, 5, 4.0).reshape(1, 1, 2, 3)
+    asymmetric_weights = fill_values(4, 5, 13, 6, 3.0).reshape(1, 1, 2, 2)
+    pointwise_input = fill_values(80, 7, 19, 9, 5.0).reshape(2, 4, 2, 5)
+    pointwise_weights = fill_values(12, 11, 23, 11, 6.0).reshape(6, 2, 1, 1)
+    pointwise_bias = np.asarray(
+        [0.25, -0.5, 1.0, -1.25, 0.75, 0.5], dtype=np.float32
+    )
+    packed_pointwise_input = fill_values(210, 13, 43, 21, 11.0).reshape(2, 5, 3, 7)
+    packed_pointwise_weights = fill_values(35, 17, 37, 18, 9.0).reshape(7, 5, 1, 1)
+    packed_pointwise_bias = np.asarray(
+        [0.25, -0.5, 1.0, -1.25, 0.75, 0.5, -0.125], dtype=np.float32
+    )
+    batch_norm_input = fill_values(24, 7, 21, 10, 4.0).reshape(2, 3, 2, 2)
+    scale = np.asarray([1.5, -0.75, 0.25], dtype=np.float32).reshape(1, 3, 1, 1)
+    bias = np.asarray([0.1, 0.5, -1.0], dtype=np.float32).reshape(1, 3, 1, 1)
+    mean = np.asarray([-0.25, 1.0, 0.5], dtype=np.float32).reshape(1, 3, 1, 1)
+    variance = np.asarray([0.5, 2.0, 0.25], dtype=np.float32).reshape(1, 3, 1, 1)
+    batch_norm_node = helper.make_node(
+        "BatchNormalization",
+        ["input", "scale", "bias", "mean", "variance"],
+        ["output"],
+        epsilon=1.0e-5,
+        momentum=0.9,
+    )
+    batch_norm = ReferenceEvaluator(
+        batch_norm_node, opsets={"": 11}
+    ).run(
+        None,
+        {
+            "input": batch_norm_input,
+            "scale": scale.ravel(),
+            "bias": bias.ravel(),
+            "mean": mean.ravel(),
+            "variance": variance.ravel(),
+        },
+    )[0]
+    transpose_conv_input = fill_values(8, 3, 13, 6, 4.0).reshape(1, 2, 2, 2)
+    transpose_conv_weights = fill_values(8, 5, 17, 8, 6.0).reshape(2, 1, 2, 2)
+    transpose_conv_bias = np.asarray([0.125], dtype=np.float32)
+    return {
+        "conv": conv2d_reference(
+            normal_input, normal_weights, normal_bias,
+            (2, 2), (1, 1), (1, 1, 1, 1), 1,
+        ).ravel(),
+        "stride2_conv": conv2d_reference(
+            stride2_input, stride2_weights, stride2_bias,
+            (2, 2), (1, 1), (1, 1, 1, 1), 1,
+        ).ravel(),
+        "unit_stride_conv": conv2d_reference(
+            unit_conv_input, unit_conv_weights, unit_conv_bias,
+            (1, 1), (1, 1), (1, 1, 1, 1), 1,
+        ).ravel(),
+        "unit_stride_conv2x2": conv2d_reference(
+            unit_conv_input, unit_conv2x2_weights, unit_conv_bias,
+            (1, 1), (1, 1), (0, 0, 1, 1), 1,
+        ).ravel(),
+        "unit_stride_conv2x2_four": conv2d_reference(
+            unit_conv_input, unit_conv2x2_four_weights,
+            np.asarray([0.375, -0.625, 0.125, -0.875], dtype=np.float32),
+            (1, 1), (1, 1), (0, 0, 1, 1), 1,
+        ).ravel(),
+        "grouped_conv": conv2d_reference(
+            grouped_input, grouped_weights, None,
+            (1, 1), (1, 1), (1, 1, 1, 1), 2,
+        ).ravel(),
+        "depthwise_conv": conv2d_reference(
+            depthwise_input, depthwise_weights, None,
+            (1, 1), (1, 2), (1, 1, 1, 1), 3,
+        ).ravel(),
+        "unit_depthwise_conv": conv2d_reference(
+            unit_depthwise_input, unit_depthwise_weights, unit_depthwise_bias,
+            (1, 1), (1, 1), (1, 1, 1, 1), 2,
+        ).ravel(),
+        "stride2x1_depthwise_conv": conv2d_reference(
+            stride2x1_depthwise_input, unit_depthwise_weights, unit_depthwise_bias,
+            (2, 1), (1, 1), (1, 1, 1, 1), 2,
+        ).ravel(),
+        "unit_depthwise_conv5x5": conv2d_reference(
+            unit_depthwise5x5_input, unit_depthwise5x5_weights, unit_depthwise_bias,
+            (1, 1), (1, 1), (2, 2, 2, 2), 2,
+        ).ravel(),
+        "unit_depthwise_conv9x9": conv2d_reference(
+            unit_depthwise9x9_input, unit_depthwise9x9_weights, unit_depthwise_bias,
+            (1, 1), (1, 1), (4, 4, 4, 4), 2,
+        ).ravel(),
+        "conv7x1": conv2d_reference(
+            conv_axis_input, conv7x1_weights, conv_axis_bias,
+            (1, 1), (1, 1), (3, 0, 3, 0), 1,
+        ).ravel(),
+        "conv1x7": conv2d_reference(
+            conv_axis_input, conv1x7_weights, conv_axis_bias,
+            (1, 1), (1, 1), (0, 3, 0, 3), 1,
+        ).ravel(),
+        "conv5x1": conv2d_reference(
+            conv_axis_input, conv5x1_weights, conv_axis_bias,
+            (1, 1), (1, 1), (2, 0, 2, 0), 1,
+        ).ravel(),
+        "conv1x5": conv2d_reference(
+            conv_axis_input, conv1x5_weights, conv_axis_bias,
+            (1, 1), (1, 1), (0, 2, 0, 2), 1,
+        ).ravel(),
+        "asymmetric_conv": conv2d_reference(
+            asymmetric_input, asymmetric_weights, None,
+            (1, 2), (2, 1), (2, 1, 1, 2), 1,
+        ).ravel(),
+        "grouped_pointwise_conv": conv2d_reference(
+            pointwise_input, pointwise_weights, pointwise_bias,
+            (1, 1), (1, 1), (0, 0, 0, 0), 2,
+        ).ravel(),
+        "packed_pointwise_conv": conv2d_reference(
+            packed_pointwise_input, packed_pointwise_weights, packed_pointwise_bias,
+            (1, 1), (1, 1), (0, 0, 0, 0), 1,
+        ).ravel(),
+        "conv_transpose": conv_transpose_reference(
+            transpose_conv_input, transpose_conv_weights, transpose_conv_bias
+        ).ravel(),
+        "batch_norm": batch_norm.ravel(),
+        "batch_norm_in_place": batch_norm.ravel(),
+    }
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--driver", required=True)
+    args = parser.parse_args()
+    completed = subprocess.run(
+        [args.driver], check=True, capture_output=True, text=True,
+        encoding="utf-8", errors="replace",
+    )
+    actual = parse_output(completed.stdout)
+    expected = expected_results()
+    if actual.keys() != expected.keys():
+        raise AssertionError(
+            f"result names differ: actual={sorted(actual)}, expected={sorted(expected)}"
+        )
+    for name, expected_values in expected.items():
+        np.testing.assert_allclose(
+            actual[name], expected_values, rtol=2.0e-5, atol=3.0e-6,
+            err_msg=name,
+        )
+    print(f"validated {len(expected)} Conv/BN results against NumPy")
+
+
+if __name__ == "__main__":
+    main()

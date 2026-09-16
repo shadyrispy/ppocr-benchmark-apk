@@ -1,0 +1,901 @@
+# Full OCR profiling
+
+The private `full-ocr-profile-driver` measures the exact bundled
+DET/CLS/REC composition without changing the public C ABI. It exists to select
+CPU optimization work from evidence rather than from isolated REC results.
+
+The profiler is built when `BUILD_TESTING=ON`. A Ninja Release invocation is:
+
+```powershell
+.\build-ninja-c\full-ocr-profile-driver.exe `
+  .\build-ninja-c\models\det.lwm `
+  .\build-ninja-c\models\cls.lwm `
+  .\build-ninja-c\models\rec.lwm `
+  .\models\ppocrv6-tiny\ppocr_keys.txt `
+  .\build-ninja-c\models\sample.ppm `
+  5 `
+  4
+```
+
+The last two arguments are measured iterations and OCR line workers. Run one
+ordinary warm-up before the measured iterations so dynamic DET session sizing,
+crop storage, and reusable workspaces do not distort the report.
+
+## Measurement semantics
+
+The JSON report separates latency from accumulated worker work:
+
+- `wall_nanoseconds.total` is observed full-request latency;
+- DET preprocess, graph, and postprocess are mutually sequential wall stages;
+- `crop` measures perspective pixel extraction;
+- `line_workers` is the wall time spent processing the CLS/REC line queue;
+- `line_worker_critical` is the longest accumulated worker time in that queue;
+- `line_dispatch_overhead` is `line_workers - line_worker_critical`, an estimate
+  of thread creation, scheduling, joining, and caller-side dispatch overhead;
+- `line_work_nanoseconds` sums CLS/REC work across workers and can exceed wall
+  time when workers overlap;
+- operator and Conv-class time is accumulated work time, not request wall time.
+
+Profiling calls the clock around every graph node. Use it to rank hotspots, not
+as the release latency benchmark. `lw-ocr-benchmark` remains the source for
+mean/P95 latency, throughput, deterministic output, and RSS measurements.
+
+The operator table covers all current IDs 1 through 21, including the six DET
+and CLS operators that the older REC-only profile did not need. Conv work is
+also classified as 1x1, ordinary 3x3, Depthwise 3x3, ordinary stride-2 3x3, or
+other Conv.
+
+## Implementation-path diagnostics
+
+The implementation_paths section is an internal, additive diagnostic section.
+Its counters are separated into detector, classifier, and recognizer, so a
+profile can distinguish packed kernels from the unpacked/parallel generic
+route:
+
+- packed_conv1x1 and packed_conv3x3_stride2 count prepared-weight Conv paths;
+- unpacked_conv and unpacked_matmul count Conv/MatMul calls that did not use
+  those prepared layouts (they may still use a parallel generic kernel);
+- packed_matmul includes the REC terminal CTC projection fast path;
+- ctc_packed_projection versus ctc_generic_projection identifies the terminal
+  REC projection implementation;
+- fused_gelu counts the AVX2 GELU chain fusion.
+
+The rec_session_cache object contains hits, misses, and reconfigurations for
+the adaptive REC Session lookup. A cache hit means the requested adaptive REC
+width already has either the active or the retained secondary Session. A miss
+causes a concrete-width Session rebuild. These counters are intended to select
+the next A/B optimization; they are not part of the public C ABI.
+
+tools/collect_native_ocr_profile.py preserves these counters in each case of
+the architecture profile summary and normalizes them per measured request.
+
+## Native ARM64 performance matrix
+
+The native ARM64 workflow runs the same profile and benchmark drivers on the
+GitHub-hosted `ubuntu-22.04-arm` runner. Its default `full` case set covers
+all combinations of line workers `1/2/4` and DET intra-op threads `1/2/4`.
+Use the workflow's `compact` choice only for a quick smoke run (`1:1`, `4:1`,
+`1:4`, `4:4`); release-facing comparisons should use `full`.
+
+Each row is reported as `line_workers:det_threads`. The report records the
+requested and actual DET thread counts, standalone detector time, full OCR
+mean/P95, peak RSS, line count, and the complete text checksum. `Standalone
+DET` is a separate detector-only benchmark; it is useful for context but is
+not subtracted from full OCR to claim an exact internal stage duration. The
+actual stage breakdown comes from the profile driver's sequential DET, crop,
+line-worker, and output timings.
+
+The DET profile also records `det_conv_transpose_thread_histogram`. In the
+serialized report, index zero counts serial ConvTranspose calls (one worker)
+and indices one through fifteen count calls using two through sixteen
+intra-op workers. The histogram is a correctness and scheduling diagnostic;
+it does not change the public C ABI or LWM format.
+
+All ARM64 changes must retain the full-OCR text checksum and pass the scalar
+reference comparison. NEON ConvTranspose range execution is only selected for
+the validated 2x2, stride-2, group-1, zero-padding shape; all other shapes
+continue through the canonical scalar fallback.
+
+## First Windows x64 result
+
+On the local AVX2 development host, five profiled runs of the bundled 500x500
+image produced 16 text lines:
+
+| Stage | 1 worker | 4 workers |
+|---|---:|---:|
+| Full OCR wall | 856.530 ms | 629.267 ms |
+| DET graph | 499.568 ms | 504.278 ms |
+| DET preprocess + postprocess | 5.448 ms | 5.422 ms |
+| Crop | 4.857 ms | 4.945 ms |
+| CLS/REC worker wall | 346.615 ms | 114.591 ms |
+| Worker dispatch overhead | 0.011 ms | 0.914 ms |
+
+For the single-worker run, the largest accumulated graph operators were:
+
+| Operator | Time | Graph work |
+|---|---:|---:|
+| Conv | 503.758 ms | 60.56% |
+| ConvTranspose | 106.270 ms | 12.78% |
+| Erf | 81.781 ms | 9.83% |
+| Resize | 33.603 ms | 4.04% |
+| MatMul | 30.809 ms | 3.70% |
+
+These are instrumented profiles rather than uninstrumented A/B claims. The
+important decision is nevertheless clear: on this sample, persistent line
+worker creation accounts for less than one millisecond, while the single DET
+graph takes about 500 milliseconds. A persistent pool remains desirable for
+architecture and tail stability, but it is not the next largest latency win.
+
+The report now includes every DET Conv/ConvTranspose node with its exact input,
+weight, output, kernel, stride, dilation, padding, group, calls, and time. The
+first node-level run identified four missing fast paths rather than a general
+threading problem:
+
+- ordinary 3x3 stride-1/pad-1 Conv;
+- 2x2 stride-1 Conv with bottom/right padding;
+- 2x2 stride-2 ConvTranspose without overlap;
+- Depthwise 5x5 stride-1/pad-2 Conv.
+
+SSE2 and AVX2 kernels were added for the three Conv families. The
+non-overlapping ConvTranspose path was reordered by output channel so it writes
+contiguous planes and retains the original per-output accumulation order.
+
+## Specialized-kernel A/B
+
+The following numbers are uninstrumented Release measurements from the same
+AVX2 host, model files, 500x500 image, two warm-ups, eight measured iterations,
+and deterministic 16-line result. The baseline executable and DLL were kept in
+a separate build directory before changing the kernels.
+
+| Metric | Baseline | Specialized kernels | Change |
+|---|---:|---:|---:|
+| Standalone DET mean | 494.960 ms | 168.194 ms | -66.0% |
+| Full OCR mean, 1 worker | 845.416 ms | 484.385 ms | -42.7% |
+| Full OCR mean, 4 workers | 618.641 ms | 256.651 ms | -58.5% |
+| Full OCR throughput, 4 workers | 1.616/s | 3.896/s | 2.41x |
+| Post-DET work, 4 workers | 114.312 ms | 91.054 ms | -20.3% |
+
+The largest individual changes in the instrumented node report were:
+
+| DET node/path | Before | After |
+|---|---:|---:|
+| node 234, regular 3x3 stride-1 | 140.54 ms | 13.38 ms |
+| node 236, ConvTranspose 2x2 stride-2 | 82.94 ms | 4.89 ms |
+| node 2, Conv 2x2 stride-1 | 41.21 ms | 2.84 ms |
+| node 4, Conv 2x2 stride-1 | 39.60 ms | 2.64 ms |
+| node 221, Depthwise 5x5 | 19.80 ms | 2.50 ms |
+
+These results favor shape-specific SIMD and cache-friendly loop order before
+operator-level threading. The next experiment should examine the remaining
+stride-2 3x3 nodes and then compare output-channel parallelism at 1/2/4/8
+threads. Nested operator threads must stay disabled while CLS/REC line workers
+are active unless an oversubscription benchmark proves a benefit.
+
+The automated `full_ocr_operator_profile` test runs both one and four workers,
+requires deterministic 16-line output, verifies all 21 operator IDs, checks the
+exact 4,946 node invocations per request, and confirms that Conv-class counts
+sum to the Conv operator count. It also verifies the DET node metadata and
+requires every Conv/ConvTranspose invocation to have a concrete 4D shape.
+
+## Session-prepared pointwise weights
+
+The next 1x1 experiment keeps the public NCHW tensors and canonical LWM OIHW
+weights unchanged. During session creation, eligible group-1 weights are
+copied once into `[Cout/4][Cin][4]` blocks. The execution microkernel loads one
+input vector and updates four output-channel accumulators, reducing repeated
+input traffic without changing each output element's input-channel addition
+order. Scalar, SSE2, AVX2, NEON, and LSX implementations share the packed
+format; FMA remains disabled.
+
+The selector requires an optimized packed backend, an output channel count
+divisible by four, and either the long feature-map geometry used by CLS/REC or
+a square map with at least 256 spatial values. The latter remains AVX2-only on
+x86, while NEON and LSX also use it on ARM64 and LoongArch64. Scalar-only
+targets do not allocate packed weights. The cross-architecture extension keeps
+the private packed format and arithmetic order, but its latency and memory
+tradeoff must be measured separately on native ARM64 and Loongson hardware.
+
+The checked analysis behind this decision can be reproduced with:
+
+```powershell
+python converter/analyze_conv_shapes.py
+```
+
+It reports every Conv/MatMul/Gemm node, its concrete shape and FLOP share, plus
+deduplicated kernel families for the bundled REC, CLS, and DET models.
+
+One paired local Windows x64 Release run used the preserved pre-change binary,
+the same DLL build settings, bundled 500x500/16-line fixture, three warm-ups,
+and twelve measured calls:
+
+| Metric | Existing kernel | Prepared 4-output kernel | Change |
+|---|---:|---:|---:|
+| Full OCR, 1 worker | 598.517 ms | 562.491 ms | -6.02% |
+| Post-DET, 1 worker | 389.860 ms | 355.069 ms | -8.92% |
+| Throughput, 1 worker | 1.671/s | 1.778/s | +6.41% |
+| Steady RSS, 1 worker | 67.61 MiB | 69.68 MiB | +2.07 MiB |
+| Full OCR, 4 workers | 361.050 ms | 338.231 ms | -6.32% |
+| Post-DET, 4 workers | 155.578 ms | 132.231 ms | -15.01% |
+| Throughput, 4 workers | 2.770/s | 2.957/s | +6.75% |
+| Steady RSS, 4 workers | 98.14 MiB | 106.38 MiB | +8.25 MiB |
+
+The extra memory is per-session packed weight storage, so it scales with the
+number of CLS/REC workers. This tradeoff should be remeasured on each target
+CPU and worker count. Direct tail-block tests require the available scalar and
+architecture-specific implementation plus automatic dispatch to be
+byte-identical before ONNX reference comparison. The x64 figures above remain
+x64-only and are not ARM64 or LoongArch performance claims.
+
+## Integer nearest-neighbor Resize
+
+The DET feature pyramid contains six nearest-neighbor Resize nodes per graph
+execution. The original general-rank kernel decoded every output element back
+to all source coordinates with repeated modulo, division, and `floor` calls.
+For the model's exact NCHW integer upscales, that coordinate work dominated the
+actual copies.
+
+The specialized path requires rank 4, unchanged N/C dimensions, scale 1 on N/C,
+and exact positive integer height/width factors consistent with the resolved
+output shape. It expands one source row contiguously, then copies that completed
+row for the remaining vertical repetitions. Fractional scales, downsampling,
+and all other ranks still use the original path. No lookup table, persistent
+allocation, model-format change, or public API change is introduced.
+
+On the local three-iteration operator profile, Resize fell from 99.240 ms to
+1.775 ms (-98.21%), and the instrumented DET graph fell from 495.248 ms to
+389.256 ms (-21.40%). A follow-up uninstrumented 3+12 run measured:
+
+| Metric | Prepared-pointwise stage | Integer Resize stage | Change |
+|---|---:|---:|---:|
+| DET, 1 worker | 207.421 ms | 135.541 ms | -34.65% |
+| Full OCR, 1 worker | 562.491 ms | 436.159 ms | -22.46% |
+| DET, 4 workers | 206.000 ms | 139.311 ms | -32.37% |
+| Full OCR, 4 workers | 338.231 ms | 224.049 ms | -33.76% |
+| Throughput, 4 workers | 2.957/s | 4.463/s | +50.94% |
+
+These are sequential local stage measurements, not a portable capacity claim.
+Steady RSS remained at the prepared-pointwise stage level. The tensor reference
+suite covers different height/width integer factors across multiple batches and
+channels, plus a fractional-scale case that must remain on the general path.
+
+## Exact spatial reduction and pooling
+
+The next exact optimization targets two remaining coordinate-heavy operators
+without changing their public or model contracts:
+
+- NCHW ReduceMean over spatial axes 2 and 3 now sums each contiguous channel
+  plane directly. Its input traversal and floating-point addition order remain
+  row-major and identical to the general implementation.
+- The detector's exact 2x2, stride-1, bottom/right-padded SAME_UPPER MaxPool
+  uses direct row pointers for the interior and separate right/bottom border
+  loops. Comparison order remains row-major, including the existing NaN
+  behavior.
+
+All other ReduceMean axes, keep-dimension modes, kernels, strides, padding and
+ceil modes retain the original general paths. Neither specialization allocates
+memory or adds session state.
+
+On the local Windows x64 Release operator profiler, using the bundled 500x500
+fixture, the targeted work per full OCR request changed as follows:
+
+| Operator | General path | Exact specialized path | Change |
+|---|---:|---:|---:|
+| MaxPool | 12.115 ms | 0.651 ms | -94.62% |
+| ReduceMean | 16.736 ms | 3.819 ms | -77.18% |
+
+An uninstrumented 3-warm-up/12-measurement observation after both changes
+reported 230.426 ms full-OCR mean and 4.340 requests/s with four line workers.
+Machine load produced visible run-to-run latency noise, so that observation is
+recorded as a local result rather than a paired end-to-end improvement claim.
+The tensor reference suite covers multi-batch/multi-channel spatial reduction,
+the specialized pool interior and borders, and the pre-existing general paths.
+
+## Contiguous-axis Softmax
+
+The recognition output Softmax processes 6,906 classes on a contiguous final
+axis. A direct-row path removes the general inner-stride multiplication and
+offset reconstruction, but deliberately retains `expf`, maximum selection,
+summation order and element-wise division. It supports separate and in-place
+output buffers; Softmax over a genuinely strided axis remains on the general
+path.
+
+In one five-iteration Windows x64 Release operator profile, Softmax work per
+full OCR request fell from 15.848 ms to 13.967 ms (-11.87%). The scalar
+reference suite covers both contiguous and strided axes and verifies that the
+contiguous in-place result is byte-identical to separate-output execution.
+
+A four-output-row MatMul experiment was also measured and rejected. Although
+it loaded each wide weight vector once for four output rows, the four concurrent
+6,906-column output streams expanded the active output working set. MatMul rose
+from 32.105 ms to 33.735 ms per request (+5.08%) on the same class of profile,
+so the experiment was removed rather than retained behind a heuristic.
+
+Two exactness-gated Erf/GELU experiments were also rejected. An Abramowitz and
+Stegun single-precision Erf approximation stayed within the numerical and OCR
+reference gates, but its `expf` and division work raised median Erf time from
+80.94 ms to 125.40 ms (+54.9%) on MSVC/UCRT. An exact five-node
+`Div -> Erf -> Add -> Mul -> Mul` fusion retained `erff` and the original
+floating-point operation order, but paired 3+12 full-OCR measurements showed no
+repeatable gain: 412.13 ms became 413.18 ms with one worker, and 216.08 ms
+became 216.18 ms with four workers. Both implementations were removed. Future
+Erf work therefore needs a genuinely vectorized approximation plus an explicit
+error corpus; eliminating intermediate tensor passes alone is not sufficient.
+
+## Four-output stride-2 3x3 Conv
+
+The next AVX2 experiment targets the stride-2 3x3 Conv family used by DET, CLS
+and REC. The previous kernel streamed one output channel at a time, so every
+output plane repeated the same strided input loads and even-lane shuffles. The
+new path keeps four independent output vectors in registers and applies four
+output-channel weights to each gathered input vector. Every output still adds
+input channels and the nine kernel positions in the original order, and FMA
+remains disabled, so the result is byte-identical to the scalar reference.
+
+The selector requires an output-channel count divisible by four. Other shapes
+retain the previous output-plane streaming kernel; a small-input-channel path
+also covers non-multiple-of-four outputs. No packed weights, session memory,
+public ABI or LWM model change is introduced.
+
+An alternating local A/B used independent Release builds from commit `7fb8881`
+and the candidate source, the same bundled 500x500/16-line fixture, three
+profiled iterations and one line worker. Across four operator-profile runs, the
+accumulated stride-2 3x3 work per request changed as follows:
+
+| Component | Existing AVX2 path | Four-output path | Change |
+|---|---:|---:|---:|
+| All DET/CLS/REC stride-2 3x3 | 57.98 ms | 35.40 ms | -38.9% |
+| DET | 27.61 ms | 19.71 ms | -28.6% |
+| CLS | 1.93 ms | 0.85 ms | -56.0% |
+| REC | 28.44 ms | 14.85 ms | -47.8% |
+
+The first DET layer (`Cin=3`, `Cout=16`) fell from about 6.08 ms to 1.75 ms in
+the alternating measurements. The direct Conv reference driver includes odd
+spatial dimensions and a four-output-channel case, and requires the AVX2 result
+to be byte-identical to the scalar kernel before graph and OCR gates run.
+
+The public reusable-handle benchmark was also run in alternating order for the
+complete OCR latency. Each entry below is the mean of three independent
+processes; every process used three warm-up calls followed by eight measured
+calls on the same 500x500/16-line fixture.
+
+| Line workers | Existing AVX2 path | Four-output path | Latency change | Speedup |
+|---:|---:|---:|---:|---:|
+| 1 | 401.195 ms | 382.943 ms | -4.55% | 1.048x |
+| 4 | 212.031 ms | 203.781 ms | -3.89% | 1.040x |
+
+Throughput increased by 4.77% with one worker and 4.03% with four workers. The
+end-to-end gain is smaller than the targeted operator reduction because image
+pre/post-processing and the other graph operators are unchanged.
+
+## Shape-aware x64 pointwise microkernel
+
+The next pointwise experiment retains the existing four-output packed-weight
+format but doubles the x64 AVX2 spatial tile from 8 to 16 values. Eight output
+accumulators remain live while each packed weight broadcast is shared by two
+input vectors. The wider tile is x64-only because 32-bit x86 exposes too few
+vector registers and would spill; x86, SSE2, non-x86, and spatial tails retain
+their existing kernels.
+
+The session selector continues to prepare long CLS/REC feature maps. On an x64
+AVX2 host it now also prepares square pointwise maps with at least 256 spatial
+positions, covering the useful DET maps while excluding tiny attention
+tensors. The canonical LWM weights remain unchanged. Prepared weights are
+private session state, every output retains its original input-channel
+addition order, FMA remains disabled, and the public ABI is unchanged.
+
+Four alternating three-iteration operator profiles compared the independent
+Release binary from commit `fcbb37e` with the final candidate:
+
+| Profiled work per request | Existing 4x8 path | Shape-aware 4x16 path | Change |
+|---|---:|---:|---:|
+| All 1x1 Conv | 112.244 ms | 84.396 ms | -24.81% |
+| DET 1x1 Conv | 30.370 ms | 22.156 ms | -27.05% |
+| Instrumented full OCR wall | 399.979 ms | 381.103 ms | -4.72% |
+
+The uninstrumented reusable-handle benchmark used the same 500x500/16-line
+fixture. Two alternating one-worker pairs, each with five warm-ups and twenty
+measured calls, changed full OCR from 389.570 ms to 359.945 ms (-7.60%, 1.082x)
+and throughput by +8.22%. Five alternating four-worker pairs, each with three
+warm-ups and twelve measured calls, averaged 213.683 ms versus 199.140 ms
+(-6.80%); the paired reduction median was 5.92%, with a 1.67% to 15.31% range
+under visible host-load variation.
+
+Preparing the additional DET weights raised steady RSS by about 2.8 MiB per OCR
+handle. This is one detector-side cost and does not multiply with the number of
+line workers. The complete Windows x64 suite passed 33/33 tests, while the x86
+ABI, export, Conv, DET graph, full-OCR, and staged-package gates passed 6/6 and
+continued to use the previous 4x8 path.
+
+## Piecewise AVX2 Erf
+
+The successful follow-up to the rejected scalar Erf experiments uses three
+piecewise degree-8 single-precision polynomials. They cover `|x| < 1`,
+`1 <= |x| < 2`, and `2 <= |x| < 4`; larger finite magnitudes saturate to one,
+then the input sign bit is restored. The implementation evaluates eight values
+at a time without FMA, preserves positive and negative zero, maps infinities to
+positive and negative one, and propagates NaNs. A scalar `erff` tail handles
+non-multiples of eight. The offline Emscripten build evaluates the same regions
+four values at a time with WASM SIMD128; other non-AVX2 targets continue to
+execute the existing scalar kernel.
+
+The direct kernel gate samples 4,099 evenly spaced values from -6 through 6,
+requires maximum absolute error no greater than `5e-7`, checks monotonicity and
+checks the special-value contract. REC, CLS and DET graph references, the full
+OCR pipeline reference, and the ten-crop OCR Golden corpus remain mandatory.
+SIMD capability is detected once per graph execution so the runtime does not
+repeat CPUID/XGETBV for every Erf node. No public ABI, LWM model, or caller-owned
+buffer contract changes.
+
+Four alternating three-iteration operator profiles compared the frozen
+shape-aware pointwise binary with this candidate on the bundled
+500x500/16-line fixture:
+
+| Profiled work per request | Scalar `erff` | Piecewise AVX2 | Change |
+|---|---:|---:|---:|
+| All Erf | 86.599 ms | 15.248 ms | -82.39% |
+| DET Erf | 20.586 ms | 3.626 ms | -82.39% |
+| REC Erf | 66.013 ms | 11.622 ms | -82.39% |
+| Instrumented full OCR wall | 390.733 ms | 307.389 ms | -21.33% |
+
+The uninstrumented reusable-handle benchmark then used five alternating pairs.
+One worker used five warm-ups and twenty measured calls per process; four
+workers used three warm-ups and twelve measured calls. Because this host showed
+visible run-to-run load variation, the paired median and full range are
+reported instead of selecting the fastest run:
+
+| Line workers | Paired latency reduction median | Pair range | Throughput gain at median pair |
+|---:|---:|---:|---:|
+| 1 | 19.61% | 3.73% to 39.95% | 24.40% |
+| 4 | 16.50% | 3.65% to 18.56% | 19.76% |
+
+Steady RSS was effectively unchanged. The complete Windows x64 suite passed
+33/33 tests and the complete x86 suite passed 32/32 tests, including numerical,
+graph, full-OCR, Golden-corpus, ABI/export and staged-package coverage.
+
+## REC resized-width distribution
+
+The private full-OCR profile now records the actual aspect-ratio-preserving REC
+width before right padding. Its JSON report includes the sample count, resized
+and target width sums, mean resized width, mean padding ratio, and stable
+192/256/320/480/640/800/960/overflow histogram buckets. The profile driver
+accepts an optional final `rec-target-width` argument and reports it as
+`rec_target_width`, so a 960 run no longer loses every width above 320 to
+clamping. Worker-local counters are merged after joining; the public C ABI is
+unchanged.
+
+With adaptive REC enabled and `target_width = 960` as the maximum, repeated
+requests produced these per-image distributions:
+
+| Width range | Bundled 500x500 sample (16 lines) | Article screenshot (8 lines) |
+|---|---:|---:|
+| <= 192 | 0 | 2 |
+| 193 to 256 | 3 | 0 |
+| 257 to 320 | 2 | 0 |
+| 321 to 480 | 2 | 0 |
+| 481 to 640 | 6 | 0 |
+| 641 to 800 | 2 | 1 |
+| 801 to 960 | 1 | 5 |
+| Mean resized width | 491.5 | 729.0 |
+| Mean right-padding ratio | 15.26% | 5.08% |
+
+For the implemented 192/320/480/640/960 policy, the bundled sample falls from
+15,360 fixed-width units to 9,280 (-39.6%), while the long-line-heavy article
+falls from 7,680 to 6,144 (-20.0%). The 960 bucket remains necessary for five
+of the article's eight detected lines, so simply lowering the global width
+would lose long-line capacity.
+
+The initial adaptive implementation treated a configured width above 320 as
+the maximum, selected the
+smallest 192/320/480/640/maximum bucket that fits each crop, and sorted crop
+indices by selected width before filling worker batches. Results were still
+written to their original line slots, preserving reading order. The initial
+scheduler limited actual crop pixels to one worker batch. The width-aware
+dynamic scheduler described below later replaced that batch barrier and retains
+all crops for the duration of one request.
+
+Each recognizer keeps its active session plus one previous concrete width. A
+cache hit swaps the two slots; a miss discards only the inactive slot and builds
+the candidate transactionally, leaving the active session usable on failure.
+This avoids five persistent sessions per worker while covering common
+short/long two-width pages. Standalone recognition remains fixed-width, and no
+public C ABI or LWM model change is introduced.
+
+Three alternating eight-request Windows x64 Release profiles compared the same
+candidate with adaptive selection disabled or enabled:
+
+| Input | Workers | Fixed 960 | Adaptive 960 max | Change |
+|---|---:|---:|---:|---:|
+| Bundled sample | 1 | 579.86 ms | 399.58 ms | -31.09% |
+| Bundled sample | 4 | 208.96 ms | 172.62 ms | -17.39% |
+| Article screenshot | 1 | 334.00 ms | 289.31 ms | -13.38% |
+| Article screenshot | 4 | 146.28 ms | 138.07 ms | -5.61% |
+
+Every pair retained checksum `0ebf8b448ab7df47` for the bundled sample and
+`d4a3997f630e5719` for the article. A separate process working-set observation
+on the four-worker bundled run measured about 108.0 MiB peak for fixed 960 and
+136.3 MiB for adaptive width. The roughly 28.3 MiB increase is the bounded
+second-session cache; it is an explicit latency/memory tradeoff and should be
+remeasured on other models and architectures.
+
+## Fixed-pool DET output-channel parallelism
+
+The first fixed-pool implementation used the full-OCR worker budget to size a
+session-owned DET thread pool. The current CPU-budget-aware policy described
+below supersedes that coupling and sizes DET independently.
+Eligible group-1 and depthwise convolutions split disjoint output-channel
+ranges only when their estimated multiply-add count reaches eight million.
+Packed 1x1 slices remain aligned to four output channels. Threads are created
+once with the dynamic DET session and reused across graph nodes; small kernels
+remain serial. DET and CLS/REC execute in separate phases, so operator workers
+are never nested inside line workers. Standalone detector and session APIs keep
+their previous single-thread behavior, and the public C ABI is unchanged.
+
+On the local Windows x64 Release AVX2 build, the bundled 500x500/16-line fixture
+was warmed up and then measured in seven independent processes with five OCR
+requests per process. Median per-request results were:
+
+| Metric | 1 worker | 4 workers | Change |
+|---|---:|---:|---:|
+| Complete OCR | 291.35 ms | 121.20 ms | -58.40% |
+| DET graph | 90.66 ms | 49.15 ms | -45.78% |
+| CLS/REC line phase | 190.84 ms | 61.36 ms | -67.85% |
+
+Compared with the immediately preceding four-worker build, whose repeated
+profile was about 175 ms per request, the combined fixed-pool DET change brings
+the complete pipeline to about 121 ms on this machine. The profile regression
+also compares a deterministic text checksum between one- and four-worker runs.
+
+The uninstrumented reusable-handle benchmark used five independent processes,
+each with three warm-ups and twenty measured calls. Its median process means
+represent the user-visible full OCR latency without per-node profile clocks:
+
+| Workers | Mean OCR | P95 OCR | Throughput | Steady RSS |
+|---:|---:|---:|---:|---:|
+| 1 | 295.14 ms | 298.13 ms | 3.39/s | 72.46 MiB |
+| 4 | 122.46 ms | 130.17 ms | 8.17/s | 109.22 MiB |
+
+Four workers therefore reduced complete OCR latency by 58.51%, delivered a
+2.41x speedup, and increased throughput by about 141%. The additional memory is
+primarily the existing independent CLS/REC worker sessions; the DET pool shares
+the detector model, weights, workspace, input, and output buffers.
+
+## Known-capacity CTC and AVX2 GELU fusion
+
+Full OCR allocates each line's text slot from
+`lw_recognizer_info.max_text_capacity`. The recognizer now uses that guarantee
+to collapse greedy CTC output once, writing UTF-8 text while computing the exact
+used capacity and score. Public size queries and calls with smaller buffers
+retain the original exact-capacity two-pass path. On the 16-line fixture, the
+accumulated CTC work fell from about 7.45 ms to 3.71 ms, but four-worker wall
+latency improved by only about 0.38 ms in the initial comparison. This is a
+small, low-risk cleanup rather than the main route to the 100 ms target.
+
+A more aggressive REC terminal-head prototype tiled
+`MatMul -> Softmax -> CTC` and avoided the full probability tensor. Six
+alternating 20-request pairs found only about 0.6 ms median wall improvement:
+the Softmax denominator still requires all 6,906 exponentials. The prototype
+was removed rather than retaining a second graph executor for that result.
+
+The retained superkernel instead targets the ten REC and three DET GELU chains:
+
+```text
+x / sqrt(2) -> Erf -> +1 -> *x -> *0.5
+```
+
+Fusion is enabled only on AVX2 when five consecutive nodes have the exact
+`sqrt(2)`, `1`, and `0.5` constants, identical FP32 tensor sizes, and four
+intermediate tensors whose final consumers are inside the chain. Every other
+model and backend continues through the ordinary node dispatcher. The kernel
+uses the existing three-region AVX2 Erf polynomial and preserves division,
+addition, and multiplication order. A dense 4,099-value test requires fused,
+unfused, separate-output, and in-place results to be byte-identical. Graph,
+pipeline, Golden-corpus, ABI, HTTP, and staged-package tests remain mandatory.
+
+Six alternating 20-request four-worker pairs used the same Release configuration,
+model files, and 500x500/16-line fixture. The baseline included known-capacity
+CTC but not GELU fusion:
+
+| Metric | Baseline median | GELU median | Change |
+|---|---:|---:|---:|
+| Complete OCR | 110.29 ms | 105.77 ms | -4.10% |
+| DET graph | 43.25 ms | 41.10 ms | -4.98% |
+| CLS/REC line wall | 55.76 ms | 53.55 ms | -3.96% |
+| Accumulated REC graph work | 155.84 ms | 150.59 ms | -3.37% |
+
+Every pair retained output checksum `f7bf2108d8c44764`; paired complete-OCR
+improvement ranged from 2.01 ms to 5.57 ms, with a 4.76 ms median. The complete
+Windows x64 Release suite passed 34/34 tests. In execution profiles, fused work
+is attributed to Erf because the stable public profile schema has no GELU
+operator; the four skipped semantic nodes retain invocation markers.
+
+## AVX2 regular 3x3 four-output blocking
+
+The detector's node 234 is a group-1 `64 -> 16` convolution with a 3x3 kernel,
+unit stride, pad one, and a 128x128 output. The former AVX2 implementation
+completed one output plane at a time, so it loaded the same input vectors once
+for every output channel. The new path keeps four independent accumulators and
+reuses each input vector across four output planes. It applies to any validated
+unit-stride 3x3 shape whose output-channel count is divisible by four; other
+shapes retain the previous kernel. A dedicated reference case covers vector
+interior pixels, scalar borders, bias, and byte-identical output.
+
+Four alternating pairs of 50-request, four-worker profiles were run under the
+same Release configuration. The longer run intentionally reports medians
+because the host was under higher sustained load than the earlier GELU test:
+
+| Metric | Previous kernel | Four-output kernel | Change |
+|---|---:|---:|---:|
+| Node 234 per invocation | 5.13 ms | 2.95 ms | -42.45% |
+| DET graph per request | 48.07 ms | 45.64 ms | -5.06% |
+| Complete OCR per request | 139.09 ms | 136.61 ms | -1.78% |
+
+The paired complete-OCR saving had a 2.15 ms median. A separate four-pair,
+12-request one-worker profile reduced node 234 from 14.00 ms to 7.48 ms and
+complete OCR from 291.24 ms to 286.10 ms. All baseline and candidate runs kept
+checksum `f7bf2108d8c44764`. These results justify retaining the general kernel,
+while also showing that four-worker wall latency is now dominated by the
+parallel REC phase rather than this DET node alone.
+
+## AVX2 long-axis Softmax
+
+REC Softmax uses a contiguous final axis of 6,906 classes, while CLS Softmax
+uses only a short class axis. The new AVX2 path is therefore enabled only for
+contiguous axes with at least 256 values. It subtracts the row maximum, uses a
+range-reduced FP32 exponential with a Taylor polynomial over the reduced
+interval, and keeps the original left-to-right scalar sum order before the
+normalization divide. This keeps the recognizer score contract stable while
+vectorizing the expensive exponential and normalization passes. Strided and
+short-axis Softmax calls retain the original implementation.
+
+Four alternating 20-request, four-worker profiles compared binaries that both
+included the regular 3x3 four-output kernel; only the long-axis Softmax path
+differed:
+
+| Metric | Scalar Softmax | AVX2 Softmax | Change |
+|---|---:|---:|---:|
+| Complete OCR | 103.67 ms | 101.57 ms | -2.03% |
+| CLS/REC line wall | 53.19 ms | 50.97 ms | -4.17% |
+| Accumulated REC graph work | 148.50 ms | 141.12 ms | -4.97% |
+
+All eight runs retained output checksum `f7bf2108d8c44764`. REC graph reference,
+REC pipeline reference, full-OCR reference/profile, scalar kernel, and the
+complete Windows x64 Release suite passed after enabling the path. The profile
+still reports Softmax as the same public operator, so no ABI or profile schema
+change is required.
+## REC four-row tiled MatMul
+
+The AVX2 MatMul backend now processes four REC rows together in eight-column tiles for wide
+terminal projections. This keeps one weight vector live while applying four broadcast inputs,
+reducing repeated weight loads without changing accumulation order.
+
+On the Windows x64 Release sample (20 iterations, four OCR workers), alternating A/B runs were:
+
+| configuration | run 1 | run 2 | run 3 | run 4 | median |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| previous MatMul path | 106.53 ms | 109.64 ms | 109.22 ms | 108.17 ms | 109.22 ms |
+| tiled four-row path | 103.90 ms | 104.34 ms | 103.93 ms | 106.39 ms | 104.34 ms |
+
+The median end-to-end improvement is approximately **4.5%**. The output checksum remained
+`f7bf2108d8c44764`; the full Windows x64 Release suite passed 34/34 tests.
+
+## Session-packed 16-column MatMul weights
+
+The recognizer's terminal projection multiplies `[1,120,80]` by one constant
+`[80,6906]` matrix. On x64 AVX2 sessions, that constant matrix is now packed
+once from canonical `[K][N]` order into 16-column panels. A 4x16 microkernel
+then loads each packed pair of AVX2 vectors once for four output rows. The
+inner-dimension accumulation order is unchanged and FMA remains disabled.
+Irregular, small, x86, non-AVX2, and WebAssembly sessions retain the canonical
+MatMul path; neither LWM nor the public C ABI changes.
+
+Seven interleaved width-960 REC profiles, five iterations per sample, measured:
+
+| Metric per recognition | Canonical B | Packed B | Change |
+|---|---:|---:|---:|
+| Mean MatMul node invocation | 2.10 ms | 0.83 ms | -60.5% |
+| Wide `80 x 6906` node | 4.10 ms | 1.55 ms | -62.2% |
+| Profiled REC graph total | 23.46 ms | 20.85 ms | -11.1% |
+
+Three additional interleaved full-OCR pairs used three warmups, ten measured
+requests, eight REC workers, target width 960, and the 500x500/16-line sample:
+
+| Metric | Canonical B | Packed B | Change |
+|---|---:|---:|---:|
+| Complete OCR mean | 117.01 ms | 109.42 ms | -6.49% |
+| Complete OCR P95 | 123.95 ms | 116.27 ms | -6.19% |
+| Work after DET | 38.65 ms | 30.81 ms | -20.28% |
+| Peak RSS | 231.96 MiB | 265.65 MiB | +33.69 MiB |
+
+Every run returned 16 lines. The packed scalar and AVX2 kernels are required
+to be byte-identical to canonical MatMul for a shape with a partial final
+panel. The REC graph/pipeline and full-OCR Golden corpus passed, as did all
+35 Windows x64 and all 35 Windows x86 Release tests.
+
+A cache-level Conv1x1 spatial-blocking prototype was evaluated immediately
+before this change. It reduced the isolated pointwise operator by about 13.3%
+but improved full OCR by only about 0.35%, below the 2% retention gate, so the
+prototype was removed.
+
+## Hardware-aware native worker default
+
+The reusable full-OCR benchmark accepts a final REC maximum-width argument, so
+the application configuration can be measured directly instead of silently
+falling back to the 320-wide recognizer default:
+
+```text
+lw-ocr-benchmark det.lwm cls.lwm rec.lwm ppocr_keys.txt sample.ppm 3 20 8 960
+```
+
+On the Windows x64 host with 16 logical processors and 16 GiB RAM, one
+20-request pass over the 500x500/16-line fixture produced:
+
+| Workers | Mean OCR | P95 OCR | Throughput | Peak RSS |
+|---:|---:|---:|---:|---:|
+| 4 | 155.91 ms | 166.94 ms | 6.41/s | 162.31 MiB |
+| 6 | 137.60 ms | 144.41 ms | 7.27/s | 197.70 MiB |
+| 8 | 116.70 ms | 121.28 ms | 8.57/s | 231.90 MiB |
+| 10 | 117.12 ms | 126.71 ms | 8.54/s | 238.54 MiB |
+
+Eight workers reduced mean latency by 25.15% relative to four at a cost of
+69.59 MiB additional peak RSS. Ten workers did not improve mean or P95 latency.
+Native 64-bit defaults therefore use the online logical-processor count capped
+at eight; x86 and non-pthread WebAssembly remain at one. Explicit values in
+`1..16` remain supported for applications with different latency and memory
+budgets. The C# selector and HTTP Demo inherit the same default policy.
+
+After the final build, two additional interleaved 20-request checks measured
+4-worker means of 160.71/155.38 ms and 8-worker means of 115.06/115.32 ms.
+Their averages were 158.05 ms and 115.19 ms respectively, a 27.12% reduction;
+peak RSS remained approximately 162.3 MiB and 231.8 MiB. Omitting the benchmark
+worker argument resolved to eight on this 16-logical-processor host.
+
+Two wider-kernel experiments were also rejected during this pass. An AVX2
+eight-row REC MatMul tile changed four-worker complete OCR from 157.07 ms to
+157.45 ms and increased accumulated MatMul time from 54.96 ms to 57.08 ms. An
+AVX2 4x24 pointwise-convolution tile changed complete OCR from 156.42 ms to
+167.82 ms and REC Conv1x1 work from 99.97 ms to 140.11 ms. Both retained output
+checksum `0ebf8b448ab7df47`, but both implementations were removed because they
+made latency worse.
+
+## Width-aware dynamic line scheduling
+
+The adaptive-width OCR path no longer waits for an entire worker-sized crop
+batch before dispatching the next lines. It materializes the request's crops,
+orders them from the largest REC target width to the smallest, and lets each
+worker claim another crop as soon as it finishes. This removes the batch
+barrier that previously left faster workers idle behind the slowest line.
+Result and text slots remain indexed by detection order, so scheduling does
+not change the public result order.
+
+Each worker receives one initial crop whose width is matched to its current
+recognizer session when possible. That affinity preserves the two-session
+adaptive-width cache on pages whose line count does not exceed the worker
+count. The remaining queue uses a Windows interlocked counter, GCC/Clang
+relaxed atomic, or the existing single-worker WebAssembly path. Thread creation
+failure still falls back to synchronous execution, and neither the C ABI nor
+the LWM format changes.
+
+Three interleaved Windows x64 Release pairs used three warmups, twelve measured
+requests, maximum REC width 960, and the saved pre-change executable/DLL:
+
+| Input | Workers | Batch barrier | Dynamic queue | Change |
+|---|---:|---:|---:|---:|
+| Bundled 16-line sample | 4 | 156.43 ms | 141.09 ms | -9.80% |
+| Bundled 16-line sample | 8 | 120.55 ms | 111.05 ms | -7.88% |
+| Long-line article | 4 | 127.36 ms | 121.12 ms | -4.90% |
+| Long-line article | 8 | 108.23 ms | 107.37 ms | -0.80% |
+
+The 16-line sample's mean work after DET fell from 77.92 to 61.24 ms with four
+workers and from 39.83 to 30.66 ms with eight. Peak RSS was effectively flat
+with four workers and rose from 265.72 to 271.83 MiB with eight because all
+sixteen crop images remain available to the queue. On the article, four-worker
+peak RSS rose from 174.55 to 186.54 MiB; the eight-worker run remained flat at
+about 235.4 MiB after width affinity was added.
+
+The existing full-OCR profile and Golden corpus continue to require the
+16-line output, stable operator counts, adaptive-width histogram, and checksum
+`0ebf8b448ab7df47`. The long-line article retained eight lines and its
+previous text output. A proposed 8x8 AVX2 Conv1x1 spatial tile was also tested
+in this pass, but it slowed the isolated pointwise profile by about 5.1% and
+the REC graph by about 3.6%, so it was removed before this scheduler change.
+All 35 Windows x64 and all 35 Windows x86 Release tests passed. WebAssembly was
+left to CI because the local host does not have the WASM toolchain.
+
+## DET 2x2 ConvTranspose output traffic
+
+The AVX2 `groups=1`, 2x2, stride-2, zero-padding ConvTranspose path now folds
+bias initialization into the first input-channel pass. Each eight-input block
+also keeps all four expanded output vectors in registers until both horizontal
+kernel taps have accumulated. This removes the separate output-plane fill,
+hoists four weight broadcasts out of the spatial loops, and halves repeated
+output loads and stores without using FMA or changing the input-channel
+accumulation order. Both DET ConvTranspose nodes continue to use the same
+general specialized path; the public C ABI and LWM format are unchanged.
+
+Five interleaved 12-request profiles compared the saved pre-change DLL with the
+candidate on the bundled 500x500/16-line sample, eight REC workers, and maximum
+REC width 960:
+
+| Metric per request | Previous path | Reduced-traffic path | Change |
+|---|---:|---:|---:|
+| DET node 236 | 2.18 ms | 1.41 ms | -35.43% |
+| DET graph | 36.51 ms | 35.55 ms | -2.62% |
+| Complete profiled OCR | 102.02 ms | 100.16 ms | -1.82% |
+
+Five additional uninstrumented 20-request pairs measured DET mean latency at
+78.64 ms versus 76.31 ms, a 2.96% reduction. Complete OCR mean changed from
+101.25 ms to 100.87 ms and P95 from 106.29 ms to 105.96 ms; the post-DET worker
+phase makes those smaller differences sensitive to host scheduling. Every run
+retained 16 lines and checksum `0ebf8b448ab7df47`.
+
+Two follow-up changes to regular 3x3 DET node 234 were rejected. Expanding the
+existing four-output AVX2 kernel from one to two spatial vectors slightly
+increased node time from 2.82 ms to 2.83 ms. Masked AVX2 handling of each row's
+right tail changed node time from 2.96 ms to 2.93 ms across seven interleaved
+15-request pairs, but DET graph time increased from 35.98 ms to 36.17 ms and
+complete profiled OCR increased from 102.23 ms to 102.86 ms. Both experiments
+preserved the output checksum, but neither cleared the retention gate, so both
+were removed. Node 234 therefore keeps the previously measured four-output
+kernel rather than accumulating unproven complexity.
+
+All 35 Windows x64 and all 35 Windows x86 Release tests passed with the final
+reduced-traffic implementation. WebAssembly remains covered by CI because the
+local host does not have the WASM toolchain.
+
+## CPU-budget-aware DET intra-op v1
+
+Full OCR no longer derives the detector's intra-op pool size from
+`lw_ocr_options.worker_count`. OCR-handle creation now detects process-visible
+logical processors, available processors, and physical cores. Native 64-bit
+builds give DET an independent physical-core budget capped at eight; x86 and
+the single-threaded WebAssembly build keep a budget of one. On Linux, affinity
+and cgroup CPU quota constrain the available budget. Failure to inspect any
+topology source falls back conservatively and never prevents OCR creation.
+
+The DET session still creates its fixed pool only once. Existing Conv work and
+output-channel gates choose the active subset for each invocation, so small
+nodes remain serial and SIMD fast paths remain active inside every slice. On
+the local 16-processor Windows x64 host, one profiled request selected eight
+threads for 31 Conv invocations, four for one, and one for 51. The profile JSON
+now records detected topology, configured and actual DET capacity, serial and
+parallel Conv counts, and a 1-through-16 thread histogram.
+
+The test-only `full-ocr-intra-benchmark` accepts a final DET intra-op override.
+This provides `1/2/4/8` A/B coverage without adding fields or exports to the
+public C ABI. With the bundled 500x500, 16-line fixture, maximum REC width 320,
+three warm-ups, and 20 measured calls, the same Release AVX2 binary produced:
+
+| CLS/REC workers | DET intra-op | Full OCR mean | Full OCR P95 | RSS |
+|---:|---:|---:|---:|---:|
+| 1 | 1 | 247.38 ms | 264.84 ms | 74.25 MiB |
+| 1 | 8 | 209.27 ms | 223.46 ms | 74.39 MiB |
+| 4 | 1 | 133.76 ms | 141.51 ms | 115.51 MiB |
+| 4 | 8 | 98.47 ms | 113.25 ms | 115.69 MiB |
+
+Independent DET budgeting reduced complete OCR mean latency by 15.40% with one
+line worker and 26.38% with four while steady RSS was effectively unchanged.
+All `1/2/4/8` profile runs retained identical text checksum, line count,
+operator invocation counts, and adaptive-width histogram. This first version
+does not add nested CLS/REC intra-op, MatMul parallelism, a shared task arena,
+thread affinity, or NUMA policy; each remains a separate measured experiment.
+All 38 Windows x64 and all 38 Windows x86 Release tests passed, including the
+ABI/export, full-OCR reference, Golden corpus, profile, and staged-package
+gates. Linux and WebAssembly remain final CI compile gates on this Windows host.
+
+## REC node hotspots by adaptive width
+
+The profile driver now emits an additive `rec_nodes` section for the 159-node
+recognition graph. Each entry records the node index, operation, accumulated
+nanoseconds, invocation count, and the same counters split by the concrete
+resized REC width bucket (`192`, `256`, `320`, `480`, `640`, `800`, `960`, or
+`other`). The buckets describe the width selected by adaptive preprocessing;
+they are not requested-width labels.
+
+The node counters are captured around the existing graph execution and do not
+change graph scheduling, arithmetic, the public C ABI, or the LWM format. They
+are accumulated worker work, so overlapping line workers can make their sum
+larger than request wall time. `tools/collect_native_ocr_profile.py` validates
+the additive section and exposes the ten largest REC nodes in the generated
+architecture summary. Use that table to choose the next kernel A/B target,
+then verify any candidate with the uninstrumented benchmark, text checksum,
+Golden corpus, and RSS gates.

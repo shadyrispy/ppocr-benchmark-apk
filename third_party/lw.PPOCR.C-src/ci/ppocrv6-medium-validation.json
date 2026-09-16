@@ -1,0 +1,26 @@
+{
+  "schema_version": 2,
+  "variant": "ppocrv6-medium",
+  "model_catalog": "models/ppocrv6-models.json",
+  "det_shapes": [[320, 320], [640, 640], [640, 960]],
+  "rec_widths": [192, 320, 480, 640, 960],
+  "numerical_gates": {
+    "det": {
+      "error_threshold": 0.0001,
+      "max_abs_error": 0.0001,
+      "max_mean_abs_error": 0.000001,
+      "max_fraction_over": 0.0001
+    },
+    "rec": {
+      "error_threshold": 0.0001,
+      "max_abs_error": 0.0003,
+      "max_mean_abs_error": 0.000001,
+      "max_fraction_over": 0.0001
+    }
+  },
+  "full_ocr": {
+    "rec_max_width": 960,
+    "expected_lines": 16,
+    "expected_text_sha256": "80ee582e0d0b62b87477b83400b793c26307b16c77adbca53419845c5442b1eb"
+  }
+}

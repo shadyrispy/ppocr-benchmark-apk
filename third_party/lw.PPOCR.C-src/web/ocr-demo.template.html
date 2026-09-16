@@ -1,0 +1,372 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>__LW_HTML_TITLE__</title>
+  <style>
+    :root { color-scheme: light; font-family: Inter, "Segoe UI", "Microsoft YaHei", sans-serif; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; color: #182230; background: #f3f6fa; }
+    body { min-height: 100dvh; }
+    header { padding: 28px 20px; background: #13243a; color: #fff; }
+    header { padding-left: max(20px, calc((100% - 1180px) / 2)); padding-right: max(20px, calc((100% - 1180px) / 2)); }
+    header h1 { margin: 0 0 6px; font-size: 24px; letter-spacing: .2px; }
+    header p { margin: 0; color: #b8c7d9; font-size: 14px; }
+    main { max-width: 1180px; margin: 24px auto; padding: 0 20px 40px; }
+    .toolbar { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 18px; }
+    .toolbar > * { margin-right: 12px; margin-bottom: 12px; }
+    @supports (gap: 12px) { .toolbar > * { margin-right: 0; margin-bottom: 0; } }
+    .source-picker { flex: 1; min-width: 260px; }
+    .options { display: flex; min-height: 46px; align-items: center; gap: 7px; padding: 11px 13px; border: 1px solid #e0e7ef; border-radius: 8px; background: #fff; color: #526277; font-size: 13px; }
+    .options input { accent-color: #2878d4; }
+    .dropzone { display: block; padding: 14px 18px; border: 1px dashed #9aabc0; border-radius: 10px; background: #fff; cursor: pointer; }
+    .dropzone.drag { border-color: #2878d4; background: #edf5ff; }
+    .dropzone strong { display: block; font-size: 14px; }
+    .dropzone span { display: block; margin-top: 3px; color: #718096; font-size: 12px; }
+    .native-file-input { position: absolute; left: -10000px; top: 0; width: 1px; height: 1px; overflow: hidden; opacity: 0; }
+    button { border: 0; border-radius: 8px; padding: 12px 20px; color: #fff; background: #2878d4; font-weight: 600; cursor: pointer; }
+    button:disabled { cursor: not-allowed; opacity: .5; }
+    button.stop { background: #c93632; }
+    button:focus-visible, a:focus-visible, summary:focus-visible, label:focus-visible { outline: 3px solid #85bfff; outline-offset: 2px; }
+    .mobile-source-actions { display: flex; width: 100%; align-items: stretch; }
+    .mobile-source-actions > * { margin-right: 10px; }
+    .mobile-source-actions > *:last-child { margin-right: 0; }
+    .source-button { display: flex; min-height: 46px; flex: 1; align-items: center; justify-content: center; border: 1px solid #9aabc0; border-radius: 9px; padding: 8px 12px; background: #fff; color: #2867ad; font-size: 14px; font-weight: 600; cursor: pointer; }
+    @supports (gap: 10px) { .mobile-source-actions { gap: 10px; } .mobile-source-actions > * { margin-right: 0; } }
+    @media (min-width: 761px) { .mobile-source-actions { display: none; } }
+    #status { min-height: 20px; color: #526277; font-size: 13px; }
+    #stats { margin: 0 0 18px; color: #607086; font-size: 12px; }
+    .pdf-controls { display: grid; grid-template-columns: minmax(160px, 1fr) auto auto; gap: 12px; align-items: end; margin: -2px 0 18px; padding: 14px 16px; }
+    .pdf-controls[hidden] { display: none; }
+    .pdf-meta { align-self: center; color: #314258; font-size: 13px; font-weight: 600; }
+    .pdf-option { display: grid; gap: 5px; color: #607086; font-size: 12px; }
+    .pdf-option select { min-height: 38px; border: 1px solid #cbd8e6; border-radius: 7px; padding: 6px 28px 6px 9px; background: #fff; color: #26384d; }
+    .pdf-page-nav { display: flex; gap: 8px; align-items: center; }
+    .pdf-page-nav button { min-width: 40px; min-height: 38px; padding: 7px 11px; border: 1px solid #cbd8e6; background: #fff; color: #2867ad; }
+    #pdf-page-label { min-width: 68px; color: #465970; text-align: center; font-size: 13px; font-variant-numeric: tabular-nums; }
+    .pdf-progress { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; }
+    .pdf-progress[hidden] { display: none; }
+    .pdf-progress progress { width: 100%; height: 10px; accent-color: #2878d4; }
+    #pdf-progress-label { min-width: 76px; color: #607086; font-size: 12px; text-align: right; }
+    .pdf-diagnostics { margin: -2px 0 18px; border-color: #efc6c4; background: #fffafa; }
+    .pdf-diagnostics[hidden] { display: none; }
+    .pdf-diagnostics summary { padding: 12px 16px; color: #9c302d; font-size: 13px; font-weight: 700; cursor: pointer; }
+    .pdf-diagnostics-body { padding: 0 16px 16px; }
+    .pdf-diagnostics p { margin: 0 0 10px; color: #704846; font-size: 12px; line-height: 1.6; }
+    .pdf-diagnostics pre { max-height: 220px; margin: 0 0 10px; overflow: auto; border: 1px solid #ead3d1; border-radius: 7px; padding: 10px; background: #fff; color: #4d3c3b; white-space: pre-wrap; overflow-wrap: anywhere; font: 11px/1.5 ui-monospace, Consolas, monospace; }
+    .pdf-diagnostics button { min-height: 38px; padding: 8px 12px; font-size: 12px; }
+    .browser-diagnostics { margin: -2px 0 18px; border-color: #efc6c4; background: #fffafa; }
+    .browser-diagnostics[hidden] { display: none; }
+    .browser-diagnostics summary { padding: 12px 16px; color: #9c302d; font-size: 13px; font-weight: 700; cursor: pointer; }
+    .browser-diagnostics-body { padding: 0 16px 16px; }
+    .browser-diagnostics p { margin: 0 0 10px; color: #704846; font-size: 12px; line-height: 1.6; }
+    .browser-diagnostics pre { max-height: 280px; margin: 0 0 10px; overflow: auto; border: 1px solid #ead3d1; border-radius: 7px; padding: 10px; background: #fff; color: #4d3c3b; white-space: pre-wrap; overflow-wrap: anywhere; font: 11px/1.5 ui-monospace, Consolas, monospace; }
+    .browser-diagnostics button { min-height: 38px; padding: 8px 12px; font-size: 12px; }
+    .mobile-tabs { display: none; }
+    .grid { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(300px, 1fr); gap: 18px; }
+    .card { overflow: hidden; border: 1px solid #e0e7ef; border-radius: 12px; background: #fff; box-shadow: 0 4px 14px #1c35570d; }
+    .card h2 { margin: 0; padding: 14px 18px; border-bottom: 1px solid #edf1f5; font-size: 15px; }
+    .preview-header { display: flex; min-height: 49px; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 10px 8px 18px; border-bottom: 1px solid #edf1f5; }
+    .preview-header h2 { flex: 1; padding: 0; border: 0; }
+    .preview-actions button { min-height: 36px; padding: 7px 10px; border: 1px solid #cbd8e6; background: #fff; color: #2867ad; font-size: 12px; }
+    .preview-actions button:hover:not(:disabled) { border-color: #2878d4; background: #edf5ff; }
+    .result-header { display: flex; min-height: 49px; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 10px 8px 18px; border-bottom: 1px solid #edf1f5; }
+    .result-header h2 { flex: 1; padding: 0; border: 0; }
+    .result-actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+    .result-actions button { min-height: 36px; padding: 7px 10px; border: 1px solid #cbd8e6; background: #fff; color: #2867ad; font-size: 12px; }
+    .result-actions button:hover:not(:disabled) { border-color: #2878d4; background: #edf5ff; }
+    .preview { display: flex; min-height: 420px; align-items: center; justify-content: center; padding: 16px; background: #f9fbfd; }
+    .preview-stage { position: relative; max-width: 100%; line-height: 0; }
+    canvas { display: block; max-width: 100%; height: auto; border-radius: 6px; background: #eef2f6; }
+    #overlay { position: absolute; top: 0; right: 0; bottom: 0; left: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+    #overlay { inset: 0; }
+    #overlay[hidden] { display: none; }
+    #overlay polygon { fill: transparent; stroke: #e53935; vector-effect: non-scaling-stroke; }
+    #overlay text { fill: #e53935; stroke: #fff; stroke-width: 3px; paint-order: stroke; font: 14px sans-serif; }
+    #overlay .active { fill: #2878d426; stroke: #2878d4; stroke-width: 3px; }
+    #results { max-height: 540px; overflow: auto; }
+    .pdf-result-tabs { display: flex; gap: 6px; padding: 8px 12px; border-bottom: 1px solid #edf1f5; background: #f8fafc; }
+    .pdf-result-tabs[hidden] { display: none; }
+    .pdf-result-tabs button { min-height: 34px; padding: 6px 12px; border: 1px solid #cbd8e6; background: #fff; color: #526277; font-size: 12px; }
+    .pdf-result-tabs button.active { border-color: #2878d4; color: #2867ad; background: #edf5ff; }
+    .page-heading { padding: 10px 16px; border-bottom: 1px solid #edf1f5; background: #f8fafc; color: #526277; font-size: 12px; font-weight: 700; }
+    .full-text { padding: 16px; white-space: pre-wrap; overflow-wrap: anywhere; font: 14px/1.65 ui-monospace, Consolas, monospace; }
+    .empty { padding: 44px 20px; color: #8794a6; text-align: center; font-size: 13px; }
+    .line { display: grid; grid-template-columns: 34px 1fr; gap: 8px; padding: 12px 16px; border-bottom: 1px solid #edf1f5; }
+    .line:last-child { border-bottom: 0; }
+    .line[data-line-index] { cursor: pointer; }
+    .line.active { background: #edf5ff; }
+    .index { color: #8b99aa; font-variant-numeric: tabular-nums; }
+    .text { overflow-wrap: anywhere; font-size: 14px; line-height: 1.5; }
+    .score { margin-top: 3px; color: #8290a0; font-size: 11px; }
+    .support { margin-top: 18px; padding: 0; }
+    .support summary { padding: 14px 18px; color: #24354a; font-size: 15px; font-weight: 600; cursor: pointer; }
+    .support-content { display: flex; gap: 24px; align-items: center; padding: 4px 20px 20px; }
+    .support h2 { margin: 0 0 8px; font-size: 16px; }
+    .support p { margin: 0 0 8px; color: #607086; font-size: 13px; line-height: 1.6; }
+    .support img { width: 150px; height: auto; flex: 0 0 auto; border-radius: 8px; }
+    a { color: #2878d4; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    footer { margin-top: 18px; color: #8491a2; font-size: 12px; text-align: right; }
+    @media (max-width: 760px) {
+      header { padding: 20px 16px 18px; }
+      header { padding-left: max(16px, env(safe-area-inset-left)); padding-right: max(16px, env(safe-area-inset-right)); }
+      header h1 { font-size: 20px; }
+      main { margin-top: 14px; padding: 0 14px 92px; }
+      main { padding-left: max(14px, env(safe-area-inset-left)); padding-right: max(14px, env(safe-area-inset-right)); padding-bottom: calc(92px + env(safe-area-inset-bottom)); }
+      .toolbar { align-items: stretch; }
+      .source-picker { width: 100%; min-width: 0; }
+      .dropzone { display: none; }
+
+      .options { width: 100%; }
+      .pdf-controls { grid-template-columns: 1fr 1fr; align-items: end; padding: 12px; }
+      .pdf-meta, .pdf-page-nav, .pdf-progress { grid-column: 1 / -1; }
+      .pdf-page-nav { justify-content: center; }
+      #run { position: fixed; z-index: 20; right: 14px; bottom: 12px; left: 14px; min-height: 52px; box-shadow: 0 8px 28px #17324f59; }
+      #run { right: max(14px, env(safe-area-inset-right)); bottom: max(12px, env(safe-area-inset-bottom)); left: max(14px, env(safe-area-inset-left)); }
+      .mobile-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-bottom: 10px; padding: 4px; border: 1px solid #dce5ef; border-radius: 10px; background: #eaf0f6; }
+      .mobile-tabs button { min-height: 42px; padding: 8px; background: transparent; color: #526277; }
+      .mobile-tabs button.active { background: #fff; color: #2867ad; box-shadow: 0 2px 6px #1c35571a; }
+      .grid { grid-template-columns: 1fr; }
+      .grid[data-mobile-panel="image"] .result-card, .grid[data-mobile-panel="results"] .image-card { display: none; }
+      .preview { min-height: 260px; padding: 10px; }
+      #results { max-height: none; overflow: visible; }
+      .result-header { align-items: flex-start; padding: 12px; }
+      .preview-header { align-items: flex-start; padding: 12px; }
+      .preview-actions button { min-height: 42px; padding: 9px 12px; font-size: 13px; }
+      .result-actions button { min-height: 42px; padding: 9px 12px; font-size: 13px; }
+      .support-content { align-items: flex-start; }
+      .support img { width: 112px; height: auto; }
+      footer { text-align: center; }
+    }
+    @media (max-width: 430px) {
+      .result-header { display: block; }
+      .result-actions { margin-top: 10px; justify-content: flex-start; }
+      .support-content { display: block; }
+      .support img { display: block; width: 60vw; max-width: 180px; height: auto; margin: 4px auto 14px; }
+      .support img { width: min(180px, 60vw); }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>lw.PPOCR.C · 离线 OCR 工作台 <span id="model-info" class="model-info" aria-label="当前模型"></span></h1>
+    <p>纯浏览器本地推理 · 模型、WASM 和 PDF.js 已内嵌 · 文件不会上传到网络</p>
+  </header>
+  <main>
+    <div class="toolbar">
+      <div class="source-picker">
+        <label id="dropzone" class="dropzone" for="file" tabindex="0">
+          <strong>选择或拖入图片 / PDF，也可粘贴图片</strong>
+          <span>支持 JPG、PNG、BMP、WebP、PDF；图片也可直接 Ctrl+V / ⌘V 粘贴截图，所有文件仅在本机处理</span>
+        </label>
+        <div class="mobile-source-actions" aria-label="选择图片">
+          <button id="pick-camera" class="source-button" type="button">拍照识别</button>
+          <button id="pick-file" class="source-button" type="button">从相册选择</button>
+        </div>
+      </div>
+      <input id="file" class="native-file-input" type="file" accept="image/*,application/pdf,.pdf">
+      <input id="camera" class="native-file-input" type="file" accept="image/*" capture="environment">
+      <label class="options" for="reading-order">Reading order:
+        <select id="reading-order" disabled>
+          <option value="horizontal-ltr">Horizontal LTR</option>
+          <option value="vertical-rtl">Vertical RTL (right to left)</option>
+          <option value="vertical-ltr">Vertical LTR (left to right)</option>
+        </select>
+      </label>
+      <label class="options"><input id="use-cls" type="checkbox" disabled> 启用方向分类（CLS）</label>
+      <button id="run" type="button" disabled>开始识别</button>
+      <span id="status" role="status" aria-live="polite" data-loading="true">正在下载离线引擎…</span>
+      <script>
+        // This tiny status controller runs before the large embedded SDK/model
+        // payload at the end of the document has finished downloading. It
+        // prevents slow mobile HTTP loads from looking like a frozen WASM init.
+        (function () {
+          var node = document.getElementById("status");
+          var started = Date.now();
+          var phase = "正在下载并解析离线引擎";
+          var active = true;
+          function render() {
+            if (!active) return;
+            var seconds = Math.max(0, Math.floor((Date.now() - started) / 1000));
+            node.textContent = phase + " · 已等待 " + seconds + " 秒";
+          }
+          var bootState = {
+            phase: phase,
+            sdkStarted: false,
+            sdkReady: false,
+            wasmReady: false,
+            backend: "unknown",
+            backendState: "starting",
+            picker: {lastSource: null, state: "idle", changeCount: 0},
+            lastError: null,
+            capabilities: {
+              webassembly: typeof WebAssembly !== "undefined",
+              worker: typeof Worker !== "undefined",
+              blob: typeof Blob !== "undefined",
+              blobWorker: typeof Worker !== "undefined" &&
+                typeof Blob !== "undefined" && window.URL &&
+                typeof window.URL.createObjectURL === "function",
+              textDecoder: typeof TextDecoder !== "undefined",
+              createImageBitmap: typeof window.createImageBitmap === "function",
+              imageDecode: typeof window.HTMLImageElement !== "undefined" &&
+                typeof window.HTMLImageElement.prototype.decode === "function",
+              globalThis: typeof globalThis !== "undefined"
+            }
+          };
+          var timer = window.setInterval(render, 1000);
+          window.__lwOcrBootStatus = Object.freeze({
+            setPhase: function (message) {
+              if (!active) return;
+              phase = message;
+              bootState.phase = message;
+              render();
+            },
+            markSdkReady: function (buildInfo) {
+              bootState.sdkStarted = true;
+              bootState.sdkReady = true;
+              bootState.build = buildInfo || null;
+              bootState.phase = "OCR SDK 已加载";
+            },
+            setBackendState: function (backend, state) {
+              bootState.backend = backend || bootState.backend || "unknown";
+              bootState.backendState = state || "starting";
+            },
+            setPickerState: function (source, state) {
+              bootState.picker.lastSource = source || null;
+              bootState.picker.state = state || "idle";
+              if (state === "selected") bootState.picker.changeCount += 1;
+            },
+            markWasmReady: function (backend) {
+              bootState.wasmReady = true;
+              bootState.backend = backend || "unknown";
+              bootState.backendState = "ready";
+            },
+            captureError: function (error) {
+              bootState.lastError = error || {message: "unknown error"};
+            },
+            snapshot: function () {
+              return JSON.parse(JSON.stringify(bootState));
+            },
+            finish: function () {
+              active = false;
+              window.clearInterval(timer);
+              node.removeAttribute("data-loading");
+            }
+          });
+          window.addEventListener("error", function (event) {
+            window.__lwOcrBootStatus.captureError({
+              phase: "javascript",
+              code: "LW_WEB_JS_FAILED",
+              name: event.error && event.error.name || "Error",
+              message: event.message || "JavaScript execution failed",
+              filename: event.filename || "",
+              line: event.lineno || 0,
+              column: event.colno || 0
+            });
+          });
+          window.addEventListener("unhandledrejection", function (event) {
+            var reason = event.reason || {};
+            window.__lwOcrBootStatus.captureError({
+              phase: "javascript",
+              code: "LW_WEB_JS_FAILED",
+              name: reason.name || "Error",
+              message: reason.message || String(reason)
+            });
+          });
+          render();
+        })();
+      </script>
+    </div>
+    <section id="pdf-controls" class="pdf-controls card" hidden aria-label="PDF 识别选项">
+      <div id="pdf-meta" class="pdf-meta"></div>
+      <label class="pdf-option">识别范围
+        <select id="pdf-scope">
+          <option value="all">全部页面</option>
+          <option value="current">当前页</option>
+        </select>
+      </label>
+      <label class="pdf-option">PDF 清晰度
+        <select id="pdf-dpi">
+          <option value="144">快速 · 144 DPI</option>
+          <option value="180" selected>标准 · 180 DPI</option>
+          <option value="220">清晰 · 220 DPI</option>
+        </select>
+      </label>
+      <div class="pdf-page-nav" aria-label="PDF 页面">
+        <button id="pdf-prev" type="button" aria-label="上一页">‹</button>
+        <span id="pdf-page-label">0 / 0</span>
+        <button id="pdf-next" type="button" aria-label="下一页">›</button>
+      </div>
+      <div id="pdf-progress" class="pdf-progress" hidden>
+        <progress id="pdf-progress-bar" max="1" value="0"></progress>
+        <span id="pdf-progress-label">0 / 0</span>
+      </div>
+    </section>
+    <details id="browser-diagnostics" class="browser-diagnostics card" hidden>
+      <summary>浏览器兼容性诊断 · 查看详情</summary>
+      <div class="browser-diagnostics-body">
+        <p>如果页面无法初始化，请复制以下信息反馈。内容不包含图片、OCR 文本和本地路径。</p>
+        <pre id="browser-diagnostics-text"></pre>
+        <button id="copy-browser-diagnostics" type="button">复制诊断信息</button>
+      </div>
+    </details>
+    <details id="pdf-diagnostics" class="pdf-diagnostics card" hidden>
+      <summary>PDF 打开失败 · 查看诊断信息</summary>
+      <div class="pdf-diagnostics-body">
+        <p>可复制以下信息反馈给项目维护者；其中不包含 PDF 内容和本地文件路径。</p>
+        <pre id="pdf-diagnostics-text"></pre>
+        <button id="copy-pdf-diagnostics" type="button">复制诊断信息</button>
+      </div>
+    </details>
+    <div id="stats">引擎状态：加载中</div>
+    <nav class="mobile-tabs" aria-label="工作区视图">
+      <button id="show-image" class="active" type="button" aria-pressed="true" aria-label="显示图片预览">预览</button>
+      <button id="show-results" type="button" aria-pressed="false">结果</button>
+    </nav>
+    <div id="workspace" class="grid" data-mobile-panel="image">
+      <section class="card image-card">
+        <div class="preview-header">
+          <h2 id="preview-title">图像预览</h2>
+          <div class="preview-actions">
+            <button id="toggle-overlay" type="button" aria-controls="overlay" aria-pressed="true">隐藏标注</button>
+          </div>
+        </div>
+        <div class="preview"><div class="preview-stage"><canvas id="canvas"></canvas><svg id="overlay" aria-hidden="true"></svg></div></div>
+      </section>
+      <section class="card result-card">
+        <div class="result-header">
+          <h2>识别结果</h2>
+          <div class="result-actions" aria-label="识别结果导出">
+            <button id="copy-text" type="button" disabled>复制文本</button>
+            <button id="share-result" type="button" hidden disabled>分享</button>
+            <button id="export-txt" type="button" disabled>导出 TXT</button>
+            <button id="export-json" type="button" disabled>导出 JSON</button>
+          </div>
+        </div>
+        <div id="pdf-result-tabs" class="pdf-result-tabs" hidden>
+          <button id="show-page-result" class="active" type="button">当前页</button>
+          <button id="show-full-result" type="button">全文</button>
+        </div>
+        <div id="results"><div class="empty">选择图片后，这里会显示识别文本。</div></div>
+      </section>
+    </div>
+    <details id="support" class="support card" open>
+      <summary>联系与支持</summary>
+      <div class="support-content">
+        <img src="data:image/jpeg;base64,__LW_SPONSOR_IMAGE_BASE64__" alt="赞赏二维码">
+        <div>
+          <h2>感谢使用 lw.PPOCR.C</h2>
+          <p>如果这个离线 OCR 工具对你有帮助，欢迎扫码支持项目维护。</p>
+          <p>项目地址：<a href="https://github.com/lxw112190/lw.PPOCR.C" target="_blank" rel="noopener noreferrer">github.com/lxw112190/lw.PPOCR.C</a></p>
+        </div>
+      </div>
+    </details>
+    <footer><a href="https://github.com/lxw112190/lw.PPOCR.C" target="_blank" rel="noopener noreferrer">lw.PPOCR.C</a> · WebAssembly · 完整 DET → CLS → REC 流程</footer>
+  </main>
+  <script>__LW_PDF_BOOTSTRAP_JS__</script>
+  <script>__LW_SDK_JS__</script>
+  <script>__LW_DEMO_UI_JS__</script>
+</body>
+</html>

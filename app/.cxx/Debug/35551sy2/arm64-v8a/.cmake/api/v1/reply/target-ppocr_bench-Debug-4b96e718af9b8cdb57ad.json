@@ -1,0 +1,257 @@
+{
+	"artifacts" : 
+	[
+		{
+			"path" : "/Users/esc/Documents/GenshinTools/tools/ppocr-bench/app/build/intermediates/cxx/Debug/35551sy2/obj/arm64-v8a/libppocr_bench.so"
+		}
+	],
+	"backtrace" : 1,
+	"backtraceGraph" : 
+	{
+		"commands" : 
+		[
+			"add_library",
+			"target_link_libraries",
+			"target_compile_options"
+		],
+		"files" : 
+		[
+			"CMakeLists.txt"
+		],
+		"nodes" : 
+		[
+			{
+				"file" : 0
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 48,
+				"parent" : 0
+			},
+			{
+				"command" : 1,
+				"file" : 0,
+				"line" : 81,
+				"parent" : 0
+			},
+			{
+				"command" : 2,
+				"file" : 0,
+				"line" : 59,
+				"parent" : 0
+			}
+		]
+	},
+	"compileGroups" : 
+	[
+		{
+			"compileCommandFragments" : 
+			[
+				{
+					"fragment" : "-g -DANDROID -fdata-sections -ffunction-sections -funwind-tables -fstack-protector-strong -no-canonical-prefixes -D_FORTIFY_SOURCE=2 -Wformat -Werror=format-security  -std=c++17 -fno-limit-debug-info  -fPIC"
+				},
+				{
+					"backtrace" : 3,
+					"fragment" : "-O3"
+				},
+				{
+					"backtrace" : 3,
+					"fragment" : "-fvisibility=hidden"
+				},
+				{
+					"backtrace" : 3,
+					"fragment" : "-funroll-loops"
+				}
+			],
+			"defines" : 
+			[
+				{
+					"define" : "ppocr_bench_EXPORTS"
+				}
+			],
+			"includes" : 
+			[
+				{
+					"backtrace" : 2,
+					"isSystem" : true,
+					"path" : "/Users/esc/Documents/GenshinTools/tools/ppocr-bench/third_party/stage/lw/include"
+				},
+				{
+					"backtrace" : 2,
+					"isSystem" : true,
+					"path" : "/Users/esc/Documents/GenshinTools/tools/ppocr-bench/third_party/stage/ort/include"
+				},
+				{
+					"backtrace" : 2,
+					"isSystem" : true,
+					"path" : "/Users/esc/Documents/GenshinTools/tools/ppocr-bench/third_party/stage/mnn/include"
+				},
+				{
+					"backtrace" : 2,
+					"isSystem" : true,
+					"path" : "/Users/esc/Documents/GenshinTools/tools/ppocr-bench/third_party/stage/ncnn-vulkan/include"
+				}
+			],
+			"language" : "CXX",
+			"sourceIndexes" : 
+			[
+				0,
+				1,
+				2,
+				3,
+				4,
+				5,
+				6
+			],
+			"sysroot" : 
+			{
+				"path" : "/Users/esc/.local/share/mise/installs/android-sdk/22.0/ndk/27.0.12077973/toolchains/llvm/prebuilt/darwin-x86_64/sysroot"
+			}
+		}
+	],
+	"id" : "ppocr_bench::@6890427a1f51a3e7e1df",
+	"link" : 
+	{
+		"commandFragments" : 
+		[
+			{
+				"fragment" : "-Wl,--build-id=sha1 -Wl,--no-rosegment -Wl,--no-undefined-version -Wl,--fatal-warnings -Wl,--no-undefined -Qunused-arguments",
+				"role" : "flags"
+			},
+			{
+				"backtrace" : 2,
+				"fragment" : "/Users/esc/Documents/GenshinTools/tools/ppocr-bench/third_party/stage/lw/lib/arm64-v8a/liblw_ppocr_c_static.a",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 2,
+				"fragment" : "/Users/esc/Documents/GenshinTools/tools/ppocr-bench/third_party/stage/ort/lib/arm64-v8a/libonnxruntime.so",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 2,
+				"fragment" : "/Users/esc/Documents/GenshinTools/tools/ppocr-bench/third_party/stage/mnn/lib/arm64-v8a/libMNN.so",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 2,
+				"fragment" : "/Users/esc/Documents/GenshinTools/tools/ppocr-bench/third_party/stage/ncnn-vulkan/lib/arm64-v8a/libncnn.a",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 2,
+				"fragment" : "/Users/esc/Documents/GenshinTools/tools/ppocr-bench/third_party/stage/ncnn-vulkan/lib/arm64-v8a/libglslang.a",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 2,
+				"fragment" : "/Users/esc/Documents/GenshinTools/tools/ppocr-bench/third_party/stage/ncnn-vulkan/lib/arm64-v8a/libSPIRV.a",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 2,
+				"fragment" : "/Users/esc/Documents/GenshinTools/tools/ppocr-bench/third_party/stage/ncnn-vulkan/lib/arm64-v8a/libglslang.a",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 2,
+				"fragment" : "/Users/esc/.local/share/mise/installs/android-sdk/22.0/ndk/27.0.12077973/toolchains/llvm/prebuilt/darwin-x86_64/lib/clang/18/lib/linux/aarch64/libomp.a",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 2,
+				"fragment" : "-llog",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 2,
+				"fragment" : "-landroid",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 2,
+				"fragment" : "-ljnigraphics",
+				"role" : "libraries"
+			},
+			{
+				"fragment" : "-latomic -lm",
+				"role" : "libraries"
+			}
+		],
+		"language" : "CXX",
+		"sysroot" : 
+		{
+			"path" : "/Users/esc/.local/share/mise/installs/android-sdk/22.0/ndk/27.0.12077973/toolchains/llvm/prebuilt/darwin-x86_64/sysroot"
+		}
+	},
+	"name" : "ppocr_bench",
+	"nameOnDisk" : "libppocr_bench.so",
+	"paths" : 
+	{
+		"build" : ".",
+		"source" : "."
+	},
+	"sourceGroups" : 
+	[
+		{
+			"name" : "Source Files",
+			"sourceIndexes" : 
+			[
+				0,
+				1,
+				2,
+				3,
+				4,
+				5,
+				6
+			]
+		}
+	],
+	"sources" : 
+	[
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "bench_common.cpp",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "det_pipeline.cpp",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "backend_lw.cpp",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "backend_ort.cpp",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "backend_mnn.cpp",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "backend_ncnn.cpp",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "jni_bridge.cpp",
+			"sourceGroupIndex" : 0
+		}
+	],
+	"type" : "SHARED_LIBRARY"
+}

@@ -1,0 +1,266 @@
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import subprocess
+import sys
+import unittest
+from pathlib import Path
+
+
+def positive_seconds(value: str) -> float:
+    seconds = float(value)
+    if seconds <= 0:
+        raise argparse.ArgumentTypeError("timeout must be greater than zero")
+    return seconds
+
+
+class StagedPackageTest(unittest.TestCase):
+    def test_required_files_and_live_demo(self) -> None:
+        root = ARGUMENTS.root.resolve()
+        consumer_build = ARGUMENTS.consumer_build.resolve()
+        executable = (
+            "lw-recognize-ppm.exe"
+            if sys.platform == "win32"
+            else "lw-recognize-ppm"
+        )
+        benchmark = (
+            "lw-rec-benchmark.exe"
+            if sys.platform == "win32"
+            else "lw-rec-benchmark"
+        )
+        detector = "lw-detect-ppm.exe" if sys.platform == "win32" else "lw-detect-ppm"
+        full_ocr = "lw-ocr-ppm.exe" if sys.platform == "win32" else "lw-ocr-ppm"
+        shared = "lw_ppocr_c.dll" if sys.platform == "win32" else "liblw_ppocr_c.so"
+        required = [
+            root / "bin" / executable,
+            root / "bin" / benchmark,
+            root / "bin" / detector,
+            root / "bin" / full_ocr,
+            root / ("bin" if sys.platform == "win32" else "lib") / shared,
+            root / "include" / "lw_infer.h",
+            root / "models" / "rec.lwm",
+            root / "models" / "cls.lwm",
+            root / "models" / "det.lwm",
+            root / "models" / "ppocr_keys.txt",
+            root / "models" / "sample-crop.ppm",
+            root / "models" / "sample.ppm",
+            root / "lib" / "cmake" / "lw.PPOCR.C" / "lw.PPOCR.CConfig.cmake",
+            root / "LICENSE",
+            root / "README.md",
+            root / "README.zh-CN.md",
+            root / "docs" / "assets" / "sponsor.jpg",
+            root / "docs" / "abi" / "c-abi-v1-candidate.json",
+            root / "docs" / "abi" / "c-abi-v1-layout.json",
+            root / "docs" / "abi" / "exports-v1-candidate.txt",
+            root / "THIRD-PARTY-NOTICES.md",
+            root / "sbom.cdx.json",
+        ]
+        if sys.platform == "win32":
+            required.extend(
+                [
+                    root / "lib" / "lw_ppocr_c.lib",
+                    root / "lib" / "lw_ppocr_c_static.lib",
+                ]
+            )
+        else:
+            required.extend(
+                [
+                    root / "lib" / "liblw_ppocr_c.so",
+                    root / "lib" / "liblw_ppocr_c_static.a",
+                ]
+            )
+        missing = [str(path) for path in required if not path.is_file()]
+        self.assertFalse(missing, f"missing staged files: {missing}")
+        sbom = json.loads((root / "sbom.cdx.json").read_text(encoding="utf-8"))
+        component = sbom["metadata"]["component"]
+        self.assertEqual(component["type"], "library")
+        self.assertEqual(component["name"], "lw.PPOCR.C")
+        self.assertEqual(component["purl"], component["bom-ref"])
+        dependency_refs = {item["ref"] for item in sbom["dependencies"]}
+        self.assertIn(component["bom-ref"], dependency_refs)
+        consumer = consumer_build / ("Release" if sys.platform == "win32" else "") / (
+            "lw-abi-v1-consumer.exe" if sys.platform == "win32" else "lw-abi-v1-consumer"
+        )
+        self.assertTrue(consumer.is_file(), f"missing package consumer: {consumer}")
+        consumer_env = os.environ.copy()
+        library_dir = root / ("bin" if sys.platform == "win32" else "lib")
+        loader_key = "PATH" if sys.platform == "win32" else "LD_LIBRARY_PATH"
+        consumer_env[loader_key] = (
+            str(library_dir) + os.pathsep + consumer_env.get(loader_key, "")
+        )
+        abi_client = subprocess.run(
+            [
+                str(consumer),
+                str(root / "models" / "rec.lwm"),
+                str(root / "models" / "ppocr_keys.txt"),
+                str(root / "models" / "sample-crop.ppm"),
+            ],
+            cwd=consumer.parent,
+            env=consumer_env,
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=180,
+        )
+        self.assertEqual(abi_client.returncode, 0, abi_client.stdout + abi_client.stderr)
+        self.assertIn("abi_v1_consumer=ok", abi_client.stdout)
+        completed = subprocess.run(
+            [
+                str(root / "bin" / executable),
+                str(root / "models" / "rec.lwm"),
+                str(root / "models" / "ppocr_keys.txt"),
+                str(root / "models" / "sample-crop.ppm"),
+            ],
+            cwd=root,
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=180,
+        )
+        self.assertEqual(completed.returncode, 0, completed.stdout + completed.stderr)
+        self.assertIn("text=纯臻营养护发素", completed.stdout)
+        self.assertIn("chars=7", completed.stdout)
+        measured = subprocess.run(
+            [
+                str(root / "bin" / benchmark),
+                str(root / "models" / "rec.lwm"),
+                str(root / "models" / "ppocr_keys.txt"),
+                str(root / "models" / "sample-crop.ppm"),
+                "1",
+                "2",
+            ],
+            cwd=root,
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=180,
+        )
+        self.assertEqual(measured.returncode, 0, measured.stdout + measured.stderr)
+        report = json.loads(measured.stdout)
+        self.assertEqual(report["schema_version"], 1)
+        self.assertEqual(report["text"], "纯臻营养护发素")
+        self.assertEqual(report["iterations"], 2)
+        detected = subprocess.run(
+            [
+                str(root / "bin" / detector),
+                str(root / "models" / "det.lwm"),
+                str(root / "models" / "sample.ppm"),
+            ],
+            cwd=root,
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=300,
+        )
+        self.assertEqual(detected.returncode, 0, detected.stdout + detected.stderr)
+        match = __import__("re").search(r"boxes=(\d+)", detected.stdout)
+        self.assertIsNotNone(match, detected.stdout)
+        assert match is not None
+        self.assertGreater(int(match.group(1)), 0)
+        recognized = subprocess.run(
+            [
+                str(root / "bin" / full_ocr),
+                str(root / "models" / "det.lwm"),
+                str(root / "models" / "cls.lwm"),
+                str(root / "models" / "rec.lwm"),
+                str(root / "models" / "ppocr_keys.txt"),
+                str(root / "models" / "sample.ppm"),
+            ],
+            cwd=root,
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=600,
+        )
+        self.assertEqual(recognized.returncode, 0, recognized.stdout + recognized.stderr)
+        self.assertIn("config rec_max_width=960 adaptive=yes", recognized.stdout)
+        self.assertIn("text=纯臻营养护发素", recognized.stdout)
+        legacy_recognized = subprocess.run(
+            [
+                str(root / "bin" / full_ocr),
+                str(root / "models" / "det.lwm"),
+                str(root / "models" / "cls.lwm"),
+                str(root / "models" / "rec.lwm"),
+                str(root / "models" / "ppocr_keys.txt"),
+                str(root / "models" / "sample.ppm"),
+                "320",
+            ],
+            cwd=root,
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=600,
+        )
+        self.assertEqual(
+            legacy_recognized.returncode,
+            0,
+            legacy_recognized.stdout + legacy_recognized.stderr,
+        )
+        self.assertIn("config rec_max_width=320 adaptive=no", legacy_recognized.stdout)
+        http_server = root / "bin" / (
+            "lw.PPOCR.C.HttpServer.exe"
+            if sys.platform == "win32"
+            else "lw.PPOCR.C.HttpServer"
+        )
+        if http_server.is_file():
+            http_required = [root / "www" / "index.html"]
+            http_missing = [str(path) for path in http_required if not path.is_file()]
+            self.assertFalse(http_missing, f"missing HTTP Demo files: {http_missing}")
+            http_test = subprocess.run(
+                [
+                    sys.executable,
+                    str(ARGUMENTS.http_script),
+                    "--server", str(http_server),
+                    "--models", str(root / "models"),
+                    "--www", str(root / "www"),
+                    "--sample", str(root / "models" / "sample.ppm"),
+                    "--request-timeout", str(ARGUMENTS.http_request_timeout),
+                ],
+                cwd=root,
+                check=False,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=ARGUMENTS.http_process_timeout,
+            )
+            self.assertEqual(
+                http_test.returncode, 0, http_test.stdout + http_test.stderr
+            )
+        winforms = root / "bin" / "lw.PPOCR.C.WinForms.exe"
+        if sys.platform == "win32" and winforms.is_file():
+            self.assertTrue((root / "models" / "sample.jpg").is_file())
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--root", type=Path, required=True)
+    parser.add_argument("--consumer-build", type=Path, required=True)
+    parser.add_argument("--http-script", type=Path, required=True)
+    parser.add_argument(
+        "--http-request-timeout", type=positive_seconds, default=30.0
+    )
+    parser.add_argument(
+        "--http-process-timeout", type=positive_seconds, default=120.0
+    )
+    return parser.parse_args()
+
+
+ARGUMENTS = parse_args()
+
+if __name__ == "__main__":
+    unittest.main(argv=[__file__], verbosity=2)

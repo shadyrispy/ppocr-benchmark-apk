@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">lw.PPOCR.C Java Demo</string>
+    <string name="app_title">lw.PPOCR.C Java Demo</string>
+    <string name="app_subtitle">Android ARM64 · 离线 OCR · Java Blocking API</string>
+</resources>

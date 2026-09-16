@@ -1,0 +1,30 @@
+# ---- nested vendor / engine git metadata (never commit; packs exceed GitHub 100MB limit) ----
+**/.git/
+
+# ---- Android / Gradle build output ----
+app/build/
+app/.gradle/
+.gradle/
+local.properties
+
+# ---- Python venv (bench helper tooling) ----
+.venv/
+__pycache__/
+*.pyc
+
+# ---- third-party build / stage / download caches (large generated artifacts, not source) ----
+third_party/stage/
+third_party/build-ncnn-android/
+third_party/build-ncnn-host/
+third_party/build-lw-android/
+third_party/dl/
+
+# ---- large native / model binaries that must not enter git history ----
+*.apk
+*.so
+*.a
+*.pack
+
+# ---- logs / OS noise ----
+*.log
+.DS_Store

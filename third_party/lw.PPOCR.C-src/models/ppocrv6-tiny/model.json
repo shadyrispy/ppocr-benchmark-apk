@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "family": "PP-OCRv6",
+  "variant": "tiny",
+  "language": "zh",
+  "runtime_status": "primary",
+  "models": {
+    "det": "det.onnx",
+    "cls": "cls.onnx",
+    "rec": "rec.onnx"
+  },
+  "dictionary": "ppocr_keys.txt",
+  "checksums": {
+    "det.onnx": "193bab7a04fca699a6c82e6abb5b81bdb28177f0abd4062552b04908dafb19f8",
+    "cls.onnx": "dd8b2b61983d76ab230a58da9e0e0e84956b71c3877f2ce6e438fe22d74d2cf2",
+    "rec.onnx": "9ef676d6ed3c88256a2d92c640c44f25b0c40947e111b14b8be8f594091563e6",
+    "ppocr_keys.txt": "46e1b34ef45684cb46d75ac76d355341fe7f0a2c38d6ee02e63ae6b3878019fc"
+  },
+  "recommended": {
+    "det": {
+      "limit_side": 960,
+      "bitmap_threshold": 0.3,
+      "box_threshold": 0.6,
+      "unclip_ratio": 1.6,
+      "max_candidates": 1000
+    },
+    "rec": {
+      "adaptive_width": true,
+      "max_width": 960
+    }
+  }
+}

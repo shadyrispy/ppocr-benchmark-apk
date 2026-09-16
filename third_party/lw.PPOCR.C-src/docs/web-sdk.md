@@ -1,0 +1,344 @@
+# Browser JavaScript SDK
+
+**lw-ppocr.js** is the reusable browser SDK for full local OCR. It contains the
+Emscripten runtime, WebAssembly, DET/CLS/REC models, and dictionary in one
+JavaScript file. Images stay in the browser; using the SDK does not require the
+native HTTP Demo or a model download at runtime.
+
+The SDK is separate from **ocr-demo.html**: applications load the JavaScript
+SDK, while people who only need the ready-made interface can open the
+standalone HTML directly.
+
+The SDK itself accepts decoded image sources, not PDF documents. The standalone
+HTML has a separate, optional PDF.js frontend which renders one PDF page to a
+Canvas and passes that Canvas to this unchanged SDK.
+
+## PP-OCRv6 model variants
+
+The default lw-ppocr.js and ocr-demo.html artifacts remain the Tiny
+compatibility variant. The SDK exposes the embedded model identity without
+requiring applications to infer it from a filename:
+
+~~~javascript
+LwPpocr.modelInfo;
+// { family: "PP-OCRv6", variant: "tiny", displayName: "PP-OCRv6 Tiny" }
+~~~
+
+Small and Medium browser artifacts are opt-in because their conversion,
+download, initialization, and memory costs are substantially higher than Tiny.
+Configure Emscripten with `-DLW_BUILD_WEB_MODEL_VARIANTS=ON`, then build
+`lw-ocr-html-all` (or the individual `lw-ocr-js-small`, `lw-ocr-js-medium`,
+`lw-ocr-html-small`, and `lw-ocr-html-medium` targets).
+
+| Variant | Build-tree SDK / HTML | Tagged-release SDK / HTML | Recommendation |
+|---|---|---|---|
+| Tiny | `lw-ppocr.js` / `ocr-demo.html` | `lw.PPOCR.C-<version>-web-sdk.js` / `lw.PPOCR.C-<version>-ocr-demo.html` | Phone and general default |
+| Small | `lw-ppocr-v6-small.js` / `ocr-demo-small.html` | `lw.PPOCR.C-<version>-web-sdk-small.js` / `lw.PPOCR.C-<version>-ocr-demo-small.html` | Opt-in after corpus/device testing |
+| Medium | `lw-ppocr-v6-medium.js` / `ocr-demo-medium.html` | `lw.PPOCR.C-<version>-web-sdk-medium.js` / `lw.PPOCR.C-<version>-ocr-demo-medium.html` | Desktop-first preview |
+
+Use one SDK file as a complete unit; its WASM runtime, DET/CLS/REC models, and dictionary are
+already embedded. All variants expose the same `LwPpocr.create()` and result
+contract, while `LwPpocr.modelInfo` identifies the selected payload.
+
+Tiny is the safe starting point for phones and embedded WebViews. Small and
+especially Medium require validation on the exact browser/device. A larger
+model is not guaranteed to improve every customer document; compare quality,
+latency, and peak memory using a representative corpus. See
+[Supported models](supported-models.md) and the
+[performance baseline](performance-baseline.md).
+
+## Quick start
+
+Place the selected release SDK beside the application page. The example below
+assumes it has been renamed to **lw-ppocr.js**; keeping the versioned filename
+is also valid when the `<script src>` value matches it:
+
+~~~html
+<input id="image" type="file" accept="image/*">
+<button id="recognize" type="button">Recognize</button>
+<pre id="output"></pre>
+
+<script src="./lw-ppocr.js"></script>
+<script>
+  let ocr;
+
+  async function getOcr() {
+    if (!ocr) {
+      ocr = await LwPpocr.create({
+        useCls: false,
+        maxImageSide: 1600,
+        readingOrder: "horizontal-ltr"
+      });
+    }
+    return ocr;
+  }
+
+  document.getElementById("recognize").addEventListener("click", async () => {
+    const file = document.getElementById("image").files[0];
+    if (!file) return;
+
+    const button = document.getElementById("recognize");
+    button.disabled = true;
+    try {
+      const engine = await getOcr();
+      const result = await engine.recognize(file);
+      document.getElementById("output").textContent =
+        result.lines.map(line => line.text).join("\n");
+    } catch (error) {
+      console.error(error.code, error.stage, error.message);
+    } finally {
+      button.disabled = false;
+    }
+  });
+
+  window.addEventListener("beforeunload", () => {
+    if (ocr) ocr.destroy();
+  });
+</script>
+~~~
+
+The normal lifecycle is:
+
+~~~text
+load lw-ppocr.js
+  -> await LwPpocr.create(options)
+  -> await engine.recognize(source)
+  -> consume result_version: 1
+  -> engine.destroy()
+~~~
+
+Keep and reuse one engine when processing multiple images. Model
+initialization is relatively expensive, while image and output buffers grow to
+a high-water mark and are reused by later calls.
+
+## Public namespace
+
+The script defines one frozen global object:
+
+~~~javascript
+LwPpocr.version;       // SDK package version, for example "0.2.0"
+LwPpocr.webAbiVersion; // low-level Web ABI used by this SDK; currently 1
+LwPpocr.Error;         // error class
+LwPpocr.create;        // async factory
+~~~
+
+Do not call Emscripten module functions, Web ABI functions, the virtual file
+system, or heap views directly. They are implementation details and may change
+independently of the JavaScript SDK contract.
+
+## Create an engine
+
+~~~javascript
+const engine = await LwPpocr.create({
+  useCls: true,
+  maxImageSide: 1600
+});
+~~~
+
+| Option | Type | Default | Meaning |
+|---|---:|---:|---|
+| **useCls** | Boolean | false | Run text-orientation classification before recognition |
+| **maxImageSide** | integer | 1600 | Scale larger images down before OCR; zero disables this limit |
+| **readingOrder** | string | `"horizontal-ltr"` | Output order: `"horizontal-ltr"`, `"vertical-rtl"`, or `"vertical-ltr"` |
+
+Options belong to the engine. To change **useCls**, destroy the old engine and
+create another one. This keeps buffer ownership and concurrent-call behavior
+unambiguous.
+
+The SDK normally runs the Emscripten module in a Blob Worker so inference does
+not block the page. If the browser or its security policy rejects Blob Workers,
+the SDK falls back to a main-thread backend. Inspect
+**engine.getStatus().backend** when diagnostics need to distinguish
+**worker** from **main-thread**.
+
+### Browser compatibility and diagnostics
+
+The SDK wrapper resolves its global object as globalThis, then self, then
+window, so the standalone SDK can start in older browser and WebView
+environments that do not expose globalThis. Image decoding uses
+createImageBitmap when available and falls back to Image onload/onerror;
+Canvas creation also retries without the optional willReadFrequently hint.
+
+Initialization failures use stable codes where possible: LW_WEB_SDK_UNAVAILABLE,
+LW_WEB_WASM_UNAVAILABLE, LW_WEB_WASM_SIMD_UNSUPPORTED,
+LW_WEB_WASM_INIT_FAILED, LW_WEB_MEMORY_FAILED, and
+LW_WEB_IMAGE_DECODE_FAILED. The standalone Demo exposes a local
+window.__lwOcrBootStatus.snapshot() object with browser capabilities, SDK/WASM
+readiness, backend, and the last captured JavaScript error. It does not upload
+this diagnostic data.
+
+## Recognize an image
+
+The async **engine.recognize(source)** method accepts:
+
+- File;
+- any decodable image Blob;
+- ImageData;
+- HTMLCanvasElement.
+
+~~~javascript
+const result = await engine.recognize(file);
+// A one-call override is also supported and does not change the default:
+const vertical = await engine.recognize(file, {
+  readingOrder: "vertical-rtl"
+});
+~~~
+
+Calls on the same engine must be serialized. Starting another recognition
+before the first Promise settles rejects with **LW_OCR_BUSY**. Use separate
+engine instances only when the extra model and WebAssembly memory is acceptable.
+
+For File input, **result.source** is the filename. Sources without a filename
+use **image**. When **maxImageSide** scales an image internally,
+**result.image** and every box coordinate are restored to the source image
+dimensions.
+
+## Result contract
+
+The SDK returns a versioned object:
+
+~~~json
+{
+  "result_version": 1,
+  "source": "article.png",
+  "image": {"width": 1920, "height": 1080},
+  "options": {"use_cls": false, "reading_order": "horizontal-ltr"},
+  "timing": {
+    "decode_ms": 4.125,
+    "inference_ms": 86.75,
+    "total_ms": 91.203
+  },
+  "lines": [
+    {
+      "index": 0,
+      "text": "识别文字",
+      "box": [10, 20, 200, 20, 200, 60, 10, 60],
+      "det_score": 0.97,
+      "rec_score": 0.99
+    }
+  ]
+}
+~~~
+
+The box is the reading-order quadrilateral
+**[x1,y1,x2,y2,x3,y3,x4,y4]** in original-image pixels. When **useCls** is
+true, each line also includes:
+
+~~~json
+{
+  "cls_score": 0.998,
+  "cls_label": 0,
+  "rotation_degrees": 0
+}
+~~~
+
+**decode_ms** includes browser decoding, optional scaling, and RGBA-to-BGR
+conversion. **inference_ms** measures the native DET/CLS/REC call.
+**total_ms** includes both and JavaScript result conversion.
+
+The standalone Demo adapts image results to downloadable **schema_version: 1**
+and multi-page PDF results to **schema_version: 2**, documented in
+[OCR result export schema](ocr-export-schema.md). The C ABI is unchanged.
+
+## State, status, and errors
+
+An engine follows:
+
+~~~text
+CREATING -> READY -> RUNNING -> READY -> DESTROYED
+~~~
+
+**engine.getStatus()** returns diagnostic data including state, backend, ready,
+runCount, heapBytes, and reusable buffer capacities. Applications normally only
+need state, backend, and ready.
+
+Errors are instances of **LwPpocr.Error** with a stable machine-readable
+**code**, a **stage**, and a human-readable **message**.
+
+| Code | Meaning |
+|---|---|
+| **LW_OCR_OPTIONS** | Invalid create options |
+| **LW_OCR_INIT_FAILED** | Runtime or model initialization failed |
+| **LW_OCR_BUSY** | The same engine already has a running recognition |
+| **LW_OCR_FAILED** | Browser preparation or inference failed |
+| **LW_OCR_DESTROYED** | The engine has already been destroyed |
+
+Native numeric status codes can also appear for low-level allocation, ABI, or
+inference failures. Application logic should use **code**, not parse localized
+message text.
+
+**destroy()** is idempotent. It terminates the Worker or shuts down the fallback
+module and releases SDK-owned buffers. A destroyed engine cannot be reused.
+
+## Build and test
+
+After activating Emscripten:
+
+~~~bash
+emcmake cmake -S . -B build-wasm -G Ninja \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DLW_BUILD_HTTP_DEMO=OFF \
+  -DLW_BUILD_CSHARP_DEMOS=OFF \
+  -DBUILD_TESTING=OFF
+
+cmake --build build-wasm --target lw-ocr-js
+cmake --build build-wasm --target lw-ocr-html
+~~~
+
+Outputs:
+
+- **build-wasm/lw-ppocr.js**: reusable JavaScript SDK;
+- **build-wasm/ocr-demo.html**: standalone application containing that SDK and
+  the example UI.
+
+The SDK packager concatenates the generated Emscripten runtime directly with
+the wrapper. It does not use eval or new Function. The HTML packager then
+inlines the exact SDK artifact plus **web/ocr-demo-ui.js**. By default it also
+embeds the pinned PDF.js core and Worker for the standalone application only;
+`-DLW_WEB_PDF=OFF` omits that layer without changing the SDK.
+
+CI runs both browser suites:
+
+~~~bash
+python web/test_ocr_sdk.py \
+  --sdk build-wasm/lw-ppocr.js \
+  --sample models/ppocrv6-tiny/sample.jpg \
+  --golden ci/web-ppocrv6-tiny.json
+
+python web/test_ocr_html.py \
+  --html build-wasm/ocr-demo.html \
+  --sample models/ppocrv6-tiny/sample.jpg \
+  --golden ci/web-ppocrv6-tiny.json
+
+python web/test_pdf_html.py \
+  --html build-wasm/ocr-demo.html \
+  --sample models/ppocrv6-tiny/sample.jpg
+~~~
+
+Small/Medium builds add real SDK and standalone-HTML OCR gates using
+`ci/web-ppocrv6-small.json` and `ci/web-ppocrv6-medium.json`. The SDK gate runs
+twice on one engine, destroys it, recreates an engine, and runs again. The
+Medium job records SDK/HTML bytes plus initialization and OCR timings as an
+informational artifact and Job Summary. Run the complete release-level browser
+matrix manually with:
+
+~~~bash
+gh workflow run wasm-html.yml --ref main -f build_web_variants=true
+~~~
+
+Normal pushes and pull requests keep the faster Tiny suite; tagged releases
+turn the variant matrix on automatically. PDF correctness remains a Tiny-only
+gate.
+
+The SDK test covers the public namespace, File/Blob/Canvas/ImageData input,
+structured results, busy/destroyed behavior, CLS on/off, Worker failure with
+real main-thread fallback OCR, repeated inference, and the post-warm-up
+WebAssembly heap high-water mark. The HTML test separately covers the example
+UI, CLS initialization lifecycle, v1 elapsed-time semantics, exports,
+compatibility adapter, and phone layout.
+The PDF test additionally verifies the standalone adapter's direct module
+Worker, explicit main-thread fallback when Worker creation is blocked,
+`FileReader` fallback when `Blob.arrayBuffer()` is absent, stable error
+diagnostics, malformed-input recovery, and zero external requests. Its phone
+viewport check is a layout gate, not a substitute for physical Android/iOS
+browser validation.

@@ -1,0 +1,273 @@
+7767517
+271 322
+Input            x                        0 1 x
+Convolution      Conv.0                   1 1 x p2o.pd_op.conv2d.0.0 0=16 1=3 11=3 2=1 12=1 3=2 13=2 4=1 14=1 15=1 16=1 5=1 6=432
+ReLU             Relu.0                   1 1 p2o.pd_op.conv2d.0.0 p2o.pd_op.relu.0.0
+Split            splitncnn_0              1 2 p2o.pd_op.relu.0.0 p2o.pd_op.relu.0.0_splitncnn_0 p2o.pd_op.relu.0.0_splitncnn_1
+Convolution      Conv.1                   1 1 p2o.pd_op.relu.0.0_splitncnn_1 p2o.pd_op.conv2d.1.0 0=8 1=2 11=2 2=1 12=1 3=1 13=1 4=-233 5=1 6=512
+ReLU             Relu.1                   1 1 p2o.pd_op.conv2d.1.0 p2o.pd_op.relu.1.0
+Convolution      Conv.2                   1 1 p2o.pd_op.relu.1.0 p2o.pd_op.conv2d.2.0 0=16 1=2 11=2 2=1 12=1 3=1 13=1 4=-233 5=1 6=512
+ReLU             Relu.2                   1 1 p2o.pd_op.conv2d.2.0 p2o.pd_op.relu.2.0
+Pooling          MaxPool.0                1 1 p2o.pd_op.relu.0.0_splitncnn_0 p2o.pd_op.pool2d.0.0 0=0 1=2 11=2 2=1 12=1 5=2
+Concat           Concat.0                 2 1 p2o.pd_op.pool2d.0.0 p2o.pd_op.relu.2.0 Concat.1 0=0
+Convolution      Conv.3                   1 1 Concat.1 p2o.pd_op.conv2d.3.0 0=16 1=3 11=3 2=1 12=1 3=2 13=2 4=1 14=1 15=1 16=1 5=1 6=4608
+ReLU             Relu.3                   1 1 p2o.pd_op.conv2d.3.0 p2o.pd_op.relu.3.0
+Convolution      Conv.4                   1 1 p2o.pd_op.relu.3.0 p2o.pd_op.conv2d.4.0 0=32 1=1 11=1 2=1 12=1 3=1 13=1 4=0 14=0 15=0 16=0 5=1 6=512
+ReLU             Relu.4                   1 1 p2o.pd_op.conv2d.4.0 p2o.pd_op.relu.4.0
+ConvolutionDepthWise Conv.5                   1 1 p2o.pd_op.relu.4.0 p2o.pd_op.depthwise_conv2d.0.0 0=32 1=3 11=3 2=1 12=1 3=1 13=1 4=1 14=1 15=1 16=1 5=1 6=288 7=32
+Split            splitncnn_1              1 2 p2o.pd_op.depthwise_conv2d.0.0 p2o.pd_op.depthwise_conv2d.0.0_splitncnn_0 p2o.pd_op.depthwise_conv2d.0.0_splitncnn_1
+Reduction        ReduceMean.0             1 1 p2o.pd_op.depthwise_conv2d.0.0_splitncnn_1 ReduceMean.1 0=3 1=0 -23303=2,1,2 4=1 5=1
+Convolution      Conv.6                   1 1 ReduceMean.1 p2o.pd_op.conv2d.5.0 0=8 1=1 11=1 2=1 12=1 3=1 13=1 4=0 14=0 15=0 16=0 5=1 6=256
+ReLU             Relu.5                   1 1 p2o.pd_op.conv2d.5.0 p2o.pd_op.relu.5.0
+Convolution      Conv.7                   1 1 p2o.pd_op.relu.5.0 p2o.pd_op.conv2d.6.0 0=32 1=1 11=1 2=1 12=1 3=1 13=1 4=0 14=0 15=0 16=0 5=1 6=256
+HardSigmoid      HardSigmoid.0            1 1 p2o.pd_op.conv2d.6.0 p2o.pd_op.hardsigmoid.0.0 0=1.666667e-01 1=5.000000e-01
+BinaryOp         Mul.0                    2 1 p2o.pd_op.depthwise_conv2d.0.0_splitncnn_0 p2o.pd_op.hardsigmoid.0.0 Mul.1 0=2
+Split            splitncnn_2              1 2 Mul.1 Mul.1_splitncnn_0 Mul.1_splitncnn_1
+Convolution      Conv.8                   1 1 Mul.1_splitncnn_1 p2o.pd_op.conv2d.7.0 0=64 1=1 11=1 2=1 12=1 3=1 13=1 4=0 14=0 15=0 16=0 5=1 6=2048
+Split            splitncnn_3              1 2 p2o.pd_op.conv2d.7.0 p2o.pd_op.conv2d.7.0_splitncnn_0 p2o.pd_op.conv2d.7.0_splitncnn_1
+BinaryOp         Div.0                    1 1 p2o.pd_op.conv2d.7.0_splitncnn_1 Div.1 0=3 1=1 2=1.414214e+00
+Erf              Erf.0                    1 1 Div.1 Erf.1
+BinaryOp         Add.18                   1 1 Erf.1 Add.19 0=0 1=1 2=1.000000e+00
+BinaryOp         Mul.2                    2 1 p2o.pd_op.conv2d.7.0_splitncnn_0 Add.19 Mul.3 0=2
+Convolution      Conv.9                   1 1 Mul.3 p2o.pd_op.conv2d.8.0 0=32 1=1 11=1 2=1 12=1 3=1 13=1 4=0 14=0 15=0 16=0 5=1 6=2048
+BinaryOp         Add.22                   2 1 Mul.1_splitncnn_0 p2o.pd_op.conv2d.8.0 Add.23 0=0
+ConvolutionDepthWise Conv.10                  1 1 Add.23 p2o.pd_op.depthwise_conv2d.1.0 0=32 1=3 11=3 2=1 12=1 3=1 13=1 4=1 14=1 15=1 16=1 5=1 6=288 7=32
+Split            splitncnn_4              1 2 p2o.pd_op.depthwise_conv2d.1.0 p2o.pd_op.depthwise_conv2d.1.0_splitncnn_0 p2o.pd_op.depthwise_conv2d.1.0_splitncnn_1
+Convolution      Conv.11                  1 1 p2o.pd_op.depthwise_conv2d.1.0_splitncnn_1 p2o.pd_op.conv2d.9.0 0=64 1=1 11=1 2=1 12=1 3=1 13=1 4=0 14=0 15=0 16=0 5=1 6=2048
+Split            splitncnn_5              1 2 p2o.pd_op.conv2d.9.0 p2o.pd_op.conv2d.9.0_splitncnn_0 p2o.pd_op.conv2d.9.0_splitncnn_1
+BinaryOp         Div.2                    1 1 p2o.pd_op.conv2d.9.0_splitncnn_1 Div.3 0=3 1=1 2=1.414214e+00
+Erf              Erf.2                    1 1 Div.3 Erf.3
+BinaryOp         Add.28                   1 1 Erf.3 Add.29 0=0 1=1 2=1.000000e+00
+BinaryOp         Mul.5                    2 1 p2o.pd_op.conv2d.9.0_splitncnn_0 Add.29 Mul.6 0=2
+Convolution      Conv.12                  1 1 Mul.6 p2o.pd_op.conv2d.10.0 0=32 1=1 11=1 2=1 12=1 3=1 13=1 4=0 14=0 15=0 16=0 5=1 6=2048
+BinaryOp         Add.32                   2 1 p2o.pd_op.depthwise_conv2d.1.0_splitncnn_0 p2o.pd_op.conv2d.10.0 Add.33 0=0
+Split            splitncnn_6              1 2 Add.33 Add.33_splitncnn_0 Add.33_splitncnn_1
+ConvolutionDepthWise Conv.13                  1 1 Add.33_splitncnn_1 p2o.pd_op.depthwise_conv2d.2.0 0=32 1=3 11=3 2=1 12=1 3=2 13=2 4=1 14=1 15=1 16=1 5=1 6=288 7=32
+Convolution      Conv.14                  1 1 p2o.pd_op.depthwise_conv2d.2.0 p2o.pd_op.conv2d.11.0 0=64 1=1 11=1 2=1 12=1 3=1 13=1 4=0 14=0 15=0 16=0 5=1 6=2048
+Split            splitncnn_7              1 2 p2o.pd_op.conv2d.11.0 p2o.pd_op.conv2d.11.0_splitncnn_0 p2o.pd_op.conv2d.11.0_splitncnn_1
+BinaryOp         Div.4                    1 1 p2o.pd_op.conv2d.11.0_splitncnn_1 Div.5 0=3 1=1 2=1.414214e+00
+Erf              Erf.4                    1 1 Div.5 Erf.5
+BinaryOp         Add.38                   1 1 Erf.5 Add.39 0=0 1=1 2=1.000000e+00
+BinaryOp         Mul.8                    2 1 p2o.pd_op.conv2d.11.0_splitncnn_0 Add.39 Mul.9 0=2
+Convolution      Conv.15                  1 1 Mul.9 p2o.pd_op.conv2d.12.0 0=48 1=1 11=1 2=1 12=1 3=1 13=1 4=0 14=0 15=0 16=0 5=1 6=3072
+ConvolutionDepthWise Conv.16                  1 1 p2o.pd_op.conv2d.12.0 p2o.pd_op.depthwise_conv2d.3.0 0=48 1=3 11=3 2=1 12=1 3=1 13=1 4=1 14=1 15=1 16=1 5=1 6=432 7=48
+Split            splitncnn_8              1 2 p2o.pd_op.depthwise_conv2d.3.0 p2o.pd_op.depthwise_conv2d.3.0_splitncnn_0 p2o.pd_op.depthwise_conv2d.3.0_splitncnn_1
+Reduction        ReduceMean.2             1 1 p2o.pd_op.depthwise_conv2d.3.0_splitncnn_1 ReduceMean.3 0=3 1=0 -23303=2,1,2 4=1 5=1
+Convolution      Conv.17                  1 1 ReduceMean.3 p2o.pd_op.conv2d.13.0 0=12 1=1 11=1 2=1 12=1 3=1 13=1 4=0 14=0 15=0 16=0 5=1 6=576
+ReLU             Relu.6                   1 1 p2o.pd_op.conv2d.13.0 p2o.pd_op.relu.6.0
+Convolution      Conv.18                  1 1 p2o.pd_op.relu.6.0 p2o.pd_op.conv2d.14.0 0=48 1=1 11=1 2=1 12=1 3=1 13=1 4=0 14=0 15=0 16=0 5=1 6=576
+HardSigmoid      HardSigmoid.1            1 1 p2o.pd_op.conv2d.14.0 p2o.pd_op.hardsigmoid.1.0 0=1.666667e-01 1=5.000000e-01
+BinaryOp         Mul.11                   2 1 p2o.pd_op.depthwise_conv2d.3.0_splitncnn_0 p2o.pd_op.hardsigmoid.1.0 Mul.12 0=2
+Split            splitncnn_9              1 2 Mul.12 Mul.12_splitncnn_0 Mul.12_splitncnn_1
+Convolution      Conv.19                  1 1 Mul.12_splitncnn_1 p2o.pd_op.conv2d.15.0 0=96 1=1 11=1 2=1 12=1 3=1 13=1 4=0 14=0 15=0 16=0 5=1 6=4608
+Split            splitncnn_10             1 2 p2o.pd_op.conv2d.15.0 p2o.pd_op.conv2d.15.0_splitncnn_0 p2o.pd_op.conv2d.15.0_splitncnn_1
+BinaryOp         Div.6                    1 1 p2o.pd_op.conv2d.15.0_splitncnn_1 Div.7 0=3 1=1 2=1.414214e+00
+Erf              Erf.6                    1 1 Div.7 Erf.7
+BinaryOp         Add.50                   1 1 Erf.7 Add.51 0=0 1=1 2=1.000000e+00
+BinaryOp         Mul.13                   2 1 p2o.pd_op.conv2d.15.0_splitncnn_0 Add.51 Mul.14 0=2
+Convolution      Conv.20                  1 1 Mul.14 p2o.pd_op.conv2d.16.0 0=48 1=1 11=1 2=1 12=1 3=1 13=1 4=0 14=0 15=0 16=0 5=1 6=4608
+BinaryOp         Add.54                   2 1 Mul.12_splitncnn_0 p2o.pd_op.conv2d.16.0 Add.55 0=0
+ConvolutionDepthWise Conv.21                  1 1 Add.55 p2o.pd_op.depthwise_conv2d.4.0 0=48 1=3 11=3 2=1 12=1 3=1 13=1 4=1 14=1 15=1 16=1 5=1 6=432 7=48
+Split            splitncnn_11             1 2 p2o.pd_op.depthwise_conv2d.4.0 p2o.pd_op.depthwise_conv2d.4.0_splitncnn_0 p2o.pd_op.depthwise_conv2d.4.0_splitncnn_1
+Convolution      Conv.22                  1 1 p2o.pd_op.depthwise_conv2d.4.0_splitncnn_1 p2o.pd_op.conv2d.17.0 0=96 1=1 11=1 2=1 12=1 3=1 13=1 4=0 14=0 15=0 16=0 5=1 6=4608
+Split            splitncnn_12             1 2 p2o.pd_op.conv2d.17.0 p2o.pd_op.conv2d.17.0_splitncnn_0 p2o.pd_op.conv2d.17.0_splitncnn_1
+BinaryOp         Div.8                    1 1 p2o.pd_op.conv2d.17.0_splitncnn_1 Div.9 0=3 1=1 2=1.414214e+00
+Erf              Erf.8                    1 1 Div.9 Erf.9
+BinaryOp         Add.60                   1 1 Erf.9 Add.61 0=0 1=1 2=1.000000e+00
+BinaryOp         Mul.16                   2 1 p2o.pd_op.conv2d.17.0_splitncnn_0 Add.61 Mul.17 0=2
+Convolution      Conv.23                  1 1 Mul.17 p2o.pd_op.conv2d.18.0 0=48 1=1 11=1 2=1 12=1 3=1 13=1 4=0 14=0 15=0 16=0 5=1 6=4608
+BinaryOp         Add.64                   2 1 p2o.pd_op.depthwise_conv2d.4.0_splitncnn_0 p2o.pd_op.conv2d.18.0 Add.65 0=0
+Split            splitncnn_13             1 2 Add.65 Add.65_splitncnn_0 Add.65_splitncnn_1
+ConvolutionDepthWise Conv.24                  1 1 Add.65_splitncnn_1 p2o.pd_op.depthwise_conv2d.5.0 0=48 1=3 11=3 2=1 12=1 3=2 13=2 4=1 14=1 15=1 16=1 5=1 6=432 7=48
+Convolution      Conv.25                  1 1 p2o.pd_op.depthwise_conv2d.5.0 p2o.pd_op.conv2d.19.0 0=96 1=1 11=1 2=1 12=1 3=1 13=1 4=0 14=0 15=0 16=0 5=1 6=4608
+Split            splitncnn_14             1 2 p2o.pd_op.conv2d.19.0 p2o.pd_op.conv2d.19.0_splitncnn_0 p2o.pd_op.conv2d.19.0_splitncnn_1
+BinaryOp         Div.10                   1 1 p2o.pd_op.conv2d.19.0_splitncnn_1 Div.11 0=3 1=1 2=1.414214e+00
+Erf              Erf.10                   1 1 Div.11 Erf.11
+BinaryOp         Add.70                   1 1 Erf.11 Add.71 0=0 1=1 2=1.000000e+00
+BinaryOp         Mul.19                   2 1 p2o.pd_op.conv2d.19.0_splitncnn_0 Add.71 Mul.20 0=2
+Convolution      Conv.26                  1 1 Mul.20 p2o.pd_op.conv2d.20.0 0=64 1=1 11=1 2=1 12=1 3=1 13=1 4=0 14=0 15=0 16=0 5=1 6=6144
+ConvolutionDepthWise Conv.27                  1 1 p2o.pd_op.conv2d.20.0 p2o.pd_op.depthwise_conv2d.6.0 0=64 1=3 11=3 2=1 12=1 3=1 13=1 4=1 14=1 15=1 16=1 5=1 6=576 7=64
+Split            splitncnn_15             1 2 p2o.pd_op.depthwise_conv2d.6.0 p2o.pd_op.depthwise_conv2d.6.0_splitncnn_0 p2o.pd_op.depthwise_conv2d.6.0_splitncnn_1
+Reduction        ReduceMean.4             1 1 p2o.pd_op.depthwise_conv2d.6.0_splitncnn_1 ReduceMean.5 0=3 1=0 -23303=2,1,2 4=1 5=1
+Convolution      Conv.28                  1 1 ReduceMean.5 p2o.pd_op.conv2d.21.0 0=16 1=1 11=1 2=1 12=1 3=1 13=1 4=0 14=0 15=0 16=0 5=1 6=1024
+ReLU             Relu.7                   1 1 p2o.pd_op.conv2d.21.0 p2o.pd_op.relu.7.0
+Convolution      Conv.29                  1 1 p2o.pd_op.relu.7.0 p2o.pd_op.conv2d.22.0 0=64 1=1 11=1 2=1 12=1 3=1 13=1 4=0 14=0 15=0 16=0 5=1 6=1024
+HardSigmoid      HardSigmoid.2            1 1 p2o.pd_op.conv2d.22.0 p2o.pd_op.hardsigmoid.2.0 0=1.666667e-01 1=5.000000e-01
+BinaryOp         Mul.22                   2 1 p2o.pd_op.depthwise_conv2d.6.0_splitncnn_0 p2o.pd_op.hardsigmoid.2.0 Mul.23 0=2
+Split            splitncnn_16             1 2 Mul.23 Mul.23_splitncnn_0 Mul.23_splitncnn_1
+Convolution      Conv.30                  1 1 Mul.23_splitncnn_1 p2o.pd_op.conv2d.23.0 0=128 1=1 11=1 2=1 12=1 3=1 13=1 4=0 14=0 15=0 16=0 5=1 6=8192
+Split            splitncnn_17             1 2 p2o.pd_op.conv2d.23.0 p2o.pd_op.conv2d.23.0_splitncnn_0 p2o.pd_op.conv2d.23.0_splitncnn_1
+BinaryOp         Div.12                   1 1 p2o.pd_op.conv2d.23.0_splitncnn_1 Div.13 0=3 1=1 2=1.414214e+00
+Erf              Erf.12                   1 1 Div.13 Erf.13
+BinaryOp         Add.82                   1 1 Erf.13 Add.83 0=0 1=1 2=1.000000e+00
+BinaryOp         Mul.24                   2 1 p2o.pd_op.conv2d.23.0_splitncnn_0 Add.83 Mul.25 0=2
+Convolution      Conv.31                  1 1 Mul.25 p2o.pd_op.conv2d.24.0 0=64 1=1 11=1 2=1 12=1 3=1 13=1 4=0 14=0 15=0 16=0 5=1 6=8192
+BinaryOp         Add.86                   2 1 Mul.23_splitncnn_0 p2o.pd_op.conv2d.24.0 Add.87 0=0
+ConvolutionDepthWise Conv.32                  1 1 Add.87 p2o.pd_op.depthwise_conv2d.7.0 0=64 1=3 11=3 2=1 12=1 3=1 13=1 4=1 14=1 15=1 16=1 5=1 6=576 7=64
+Split            splitncnn_18             1 2 p2o.pd_op.depthwise_conv2d.7.0 p2o.pd_op.depthwise_conv2d.7.0_splitncnn_0 p2o.pd_op.depthwise_conv2d.7.0_splitncnn_1
+Convolution      Conv.33                  1 1 p2o.pd_op.depthwise_conv2d.7.0_splitncnn_1 p2o.pd_op.conv2d.25.0 0=128 1=1 11=1 2=1 12=1 3=1 13=1 4=0 14=0 15=0 16=0 5=1 6=8192
+Split            splitncnn_19             1 2 p2o.pd_op.conv2d.25.0 p2o.pd_op.conv2d.25.0_splitncnn_0 p2o.pd_op.conv2d.25.0_splitncnn_1
+BinaryOp         Div.14                   1 1 p2o.pd_op.conv2d.25.0_splitncnn_1 Div.15 0=3 1=1 2=1.414214e+00
+Erf              Erf.14                   1 1 Div.15 Erf.15
+BinaryOp         Add.92                   1 1 Erf.15 Add.93 0=0 1=1 2=1.000000e+00
+BinaryOp         Mul.27                   2 1 p2o.pd_op.conv2d.25.0_splitncnn_0 Add.93 Mul.28 0=2
+Convolution      Conv.34                  1 1 Mul.28 p2o.pd_op.conv2d.26.0 0=64 1=1 11=1 2=1 12=1 3=1 13=1 4=0 14=0 15=0 16=0 5=1 6=8192
+BinaryOp         Add.96                   2 1 p2o.pd_op.depthwise_conv2d.7.0_splitncnn_0 p2o.pd_op.conv2d.26.0 Add.97 0=0
+ConvolutionDepthWise Conv.35                  1 1 Add.97 p2o.pd_op.depthwise_conv2d.8.0 0=64 1=3 11=3 2=1 12=1 3=1 13=1 4=1 14=1 15=1 16=1 5=1 6=576 7=64
+Split            splitncnn_20             1 2 p2o.pd_op.depthwise_conv2d.8.0 p2o.pd_op.depthwise_conv2d.8.0_splitncnn_0 p2o.pd_op.depthwise_conv2d.8.0_splitncnn_1
+Reduction        ReduceMean.6             1 1 p2o.pd_op.depthwise_conv2d.8.0_splitncnn_1 ReduceMean.7 0=3 1=0 -23303=2,1,2 4=1 5=1
+Convolution      Conv.36                  1 1 ReduceMean.7 p2o.pd_op.conv2d.27.0 0=16 1=1 11=1 2=1 12=1 3=1 13=1 4=0 14=0 15=0 16=0 5=1 6=1024
+ReLU             Relu.8                   1 1 p2o.pd_op.conv2d.27.0 p2o.pd_op.relu.8.0
+Convolution      Conv.37                  1 1 p2o.pd_op.relu.8.0 p2o.pd_op.conv2d.28.0 0=64 1=1 11=1 2=1 12=1 3=1 13=1 4=0 14=0 15=0 16=0 5=1 6=1024
+HardSigmoid      HardSigmoid.3            1 1 p2o.pd_op.conv2d.28.0 p2o.pd_op.hardsigmoid.3.0 0=1.666667e-01 1=5.000000e-01
+BinaryOp         Mul.30                   2 1 p2o.pd_op.depthwise_conv2d.8.0_splitncnn_0 p2o.pd_op.hardsigmoid.3.0 Mul.31 0=2
+Split            splitncnn_21             1 2 Mul.31 Mul.31_splitncnn_0 Mul.31_splitncnn_1
+Convolution      Conv.38                  1 1 Mul.31_splitncnn_1 p2o.pd_op.conv2d.29.0 0=128 1=1 11=1 2=1 12=1 3=1 13=1 4=0 14=0 15=0 16=0 5=1 6=8192
+Split            splitncnn_22             1 2 p2o.pd_op.conv2d.29.0 p2o.pd_op.conv2d.29.0_splitncnn_0 p2o.pd_op.conv2d.29.0_splitncnn_1
+BinaryOp         Div.16                   1 1 p2o.pd_op.conv2d.29.0_splitncnn_1 Div.17 0=3 1=1 2=1.414214e+00
+Erf              Erf.16                   1 1 Div.17 Erf.17
+BinaryOp         Add.106                  1 1 Erf.17 Add.107 0=0 1=1 2=1.000000e+00
+BinaryOp         Mul.32                   2 1 p2o.pd_op.conv2d.29.0_splitncnn_0 Add.107 Mul.33 0=2
+Convolution      Conv.39                  1 1 Mul.33 p2o.pd_op.conv2d.30.0 0=64 1=1 11=1 2=1 12=1 3=1 13=1 4=0 14=0 15=0 16=0 5=1 6=8192
+BinaryOp         Add.110                  2 1 Mul.31_splitncnn_0 p2o.pd_op.conv2d.30.0 Add.111 0=0
+ConvolutionDepthWise Conv.40                  1 1 Add.111 p2o.pd_op.depthwise_conv2d.9.0 0=64 1=3 11=3 2=1 12=1 3=1 13=1 4=1 14=1 15=1 16=1 5=1 6=576 7=64
+Split            splitncnn_23             1 2 p2o.pd_op.depthwise_conv2d.9.0 p2o.pd_op.depthwise_conv2d.9.0_splitncnn_0 p2o.pd_op.depthwise_conv2d.9.0_splitncnn_1
+Convolution      Conv.41                  1 1 p2o.pd_op.depthwise_conv2d.9.0_splitncnn_1 p2o.pd_op.conv2d.31.0 0=128 1=1 11=1 2=1 12=1 3=1 13=1 4=0 14=0 15=0 16=0 5=1 6=8192
+Split            splitncnn_24             1 2 p2o.pd_op.conv2d.31.0 p2o.pd_op.conv2d.31.0_splitncnn_0 p2o.pd_op.conv2d.31.0_splitncnn_1
+BinaryOp         Div.18                   1 1 p2o.pd_op.conv2d.31.0_splitncnn_1 Div.19 0=3 1=1 2=1.414214e+00
+Erf              Erf.18                   1 1 Div.19 Erf.19
+BinaryOp         Add.116                  1 1 Erf.19 Add.117 0=0 1=1 2=1.000000e+00
+BinaryOp         Mul.35                   2 1 p2o.pd_op.conv2d.31.0_splitncnn_0 Add.117 Mul.36 0=2
+Convolution      Conv.42                  1 1 Mul.36 p2o.pd_op.conv2d.32.0 0=64 1=1 11=1 2=1 12=1 3=1 13=1 4=0 14=0 15=0 16=0 5=1 6=8192
+BinaryOp         Add.120                  2 1 p2o.pd_op.depthwise_conv2d.9.0_splitncnn_0 p2o.pd_op.conv2d.32.0 Add.121 0=0
+Split            splitncnn_25             1 2 Add.121 Add.121_splitncnn_0 Add.121_splitncnn_1
+ConvolutionDepthWise Conv.43                  1 1 Add.121_splitncnn_1 p2o.pd_op.depthwise_conv2d.10.0 0=64 1=3 11=3 2=1 12=1 3=2 13=2 4=1 14=1 15=1 16=1 5=1 6=576 7=64
+Convolution      Conv.44                  1 1 p2o.pd_op.depthwise_conv2d.10.0 p2o.pd_op.conv2d.33.0 0=128 1=1 11=1 2=1 12=1 3=1 13=1 4=0 14=0 15=0 16=0 5=1 6=8192
+Split            splitncnn_26             1 2 p2o.pd_op.conv2d.33.0 p2o.pd_op.conv2d.33.0_splitncnn_0 p2o.pd_op.conv2d.33.0_splitncnn_1
+BinaryOp         Div.20                   1 1 p2o.pd_op.conv2d.33.0_splitncnn_1 Div.21 0=3 1=1 2=1.414214e+00
+Erf              Erf.20                   1 1 Div.21 Erf.21
+BinaryOp         Add.126                  1 1 Erf.21 Add.127 0=0 1=1 2=1.000000e+00
+BinaryOp         Mul.38                   2 1 p2o.pd_op.conv2d.33.0_splitncnn_0 Add.127 Mul.39 0=2
+Convolution      Conv.45                  1 1 Mul.39 p2o.pd_op.conv2d.34.0 0=160 1=1 11=1 2=1 12=1 3=1 13=1 4=0 14=0 15=0 16=0 5=1 6=20480
+ConvolutionDepthWise Conv.46                  1 1 p2o.pd_op.conv2d.34.0 p2o.pd_op.depthwise_conv2d.11.0 0=160 1=3 11=3 2=1 12=1 3=1 13=1 4=1 14=1 15=1 16=1 5=1 6=1440 7=160
+Split            splitncnn_27             1 2 p2o.pd_op.depthwise_conv2d.11.0 p2o.pd_op.depthwise_conv2d.11.0_splitncnn_0 p2o.pd_op.depthwise_conv2d.11.0_splitncnn_1
+Reduction        ReduceMean.8             1 1 p2o.pd_op.depthwise_conv2d.11.0_splitncnn_1 ReduceMean.9 0=3 1=0 -23303=2,1,2 4=1 5=1
+Convolution      Conv.47                  1 1 ReduceMean.9 p2o.pd_op.conv2d.35.0 0=40 1=1 11=1 2=1 12=1 3=1 13=1 4=0 14=0 15=0 16=0 5=1 6=6400
+ReLU             Relu.9                   1 1 p2o.pd_op.conv2d.35.0 p2o.pd_op.relu.9.0
+Convolution      Conv.48                  1 1 p2o.pd_op.relu.9.0 p2o.pd_op.conv2d.36.0 0=160 1=1 11=1 2=1 12=1 3=1 13=1 4=0 14=0 15=0 16=0 5=1 6=6400
+HardSigmoid      HardSigmoid.4            1 1 p2o.pd_op.conv2d.36.0 p2o.pd_op.hardsigmoid.4.0 0=1.666667e-01 1=5.000000e-01
+BinaryOp         Mul.41                   2 1 p2o.pd_op.depthwise_conv2d.11.0_splitncnn_0 p2o.pd_op.hardsigmoid.4.0 Mul.42 0=2
+Split            splitncnn_28             1 2 Mul.42 Mul.42_splitncnn_0 Mul.42_splitncnn_1
+Convolution      Conv.49                  1 1 Mul.42_splitncnn_1 p2o.pd_op.conv2d.37.0 0=320 1=1 11=1 2=1 12=1 3=1 13=1 4=0 14=0 15=0 16=0 5=1 6=51200
+Split            splitncnn_29             1 2 p2o.pd_op.conv2d.37.0 p2o.pd_op.conv2d.37.0_splitncnn_0 p2o.pd_op.conv2d.37.0_splitncnn_1
+BinaryOp         Div.22                   1 1 p2o.pd_op.conv2d.37.0_splitncnn_1 Div.23 0=3 1=1 2=1.414214e+00
+Erf              Erf.22                   1 1 Div.23 Erf.23
+BinaryOp         Add.138                  1 1 Erf.23 Add.139 0=0 1=1 2=1.000000e+00
+BinaryOp         Mul.43                   2 1 p2o.pd_op.conv2d.37.0_splitncnn_0 Add.139 Mul.44 0=2
+Convolution      Conv.50                  1 1 Mul.44 p2o.pd_op.conv2d.38.0 0=160 1=1 11=1 2=1 12=1 3=1 13=1 4=0 14=0 15=0 16=0 5=1 6=51200
+BinaryOp         Add.142                  2 1 Mul.42_splitncnn_0 p2o.pd_op.conv2d.38.0 Add.143 0=0
+ConvolutionDepthWise Conv.51                  1 1 Add.143 p2o.pd_op.depthwise_conv2d.12.0 0=160 1=3 11=3 2=1 12=1 3=1 13=1 4=1 14=1 15=1 16=1 5=1 6=1440 7=160
+Split            splitncnn_30             1 2 p2o.pd_op.depthwise_conv2d.12.0 p2o.pd_op.depthwise_conv2d.12.0_splitncnn_0 p2o.pd_op.depthwise_conv2d.12.0_splitncnn_1
+Convolution      Conv.52                  1 1 p2o.pd_op.depthwise_conv2d.12.0_splitncnn_1 p2o.pd_op.conv2d.39.0 0=320 1=1 11=1 2=1 12=1 3=1 13=1 4=0 14=0 15=0 16=0 5=1 6=51200
+Split            splitncnn_31             1 2 p2o.pd_op.conv2d.39.0 p2o.pd_op.conv2d.39.0_splitncnn_0 p2o.pd_op.conv2d.39.0_splitncnn_1
+BinaryOp         Div.24                   1 1 p2o.pd_op.conv2d.39.0_splitncnn_1 Div.25 0=3 1=1 2=1.414214e+00
+Erf              Erf.24                   1 1 Div.25 Erf.25
+BinaryOp         Add.148                  1 1 Erf.25 Add.149 0=0 1=1 2=1.000000e+00
+BinaryOp         Mul.46                   2 1 p2o.pd_op.conv2d.39.0_splitncnn_0 Add.149 Mul.47 0=2
+Convolution      Conv.53                  1 1 Mul.47 p2o.pd_op.conv2d.40.0 0=160 1=1 11=1 2=1 12=1 3=1 13=1 4=0 14=0 15=0 16=0 5=1 6=51200
+BinaryOp         Add.152                  2 1 p2o.pd_op.depthwise_conv2d.12.0_splitncnn_0 p2o.pd_op.conv2d.40.0 Add.153 0=0
+Convolution      Conv.54                  1 1 Add.153 p2o.pd_op.conv2d.41.0 0=64 1=1 11=1 2=1 12=1 3=1 13=1 4=0 14=0 15=0 16=0 5=0 6=10240
+Split            splitncnn_32             1 3 p2o.pd_op.conv2d.41.0 p2o.pd_op.conv2d.41.0_splitncnn_0 p2o.pd_op.conv2d.41.0_splitncnn_1 p2o.pd_op.conv2d.41.0_splitncnn_2
+Pooling          GlobalAveragePool.0      1 1 p2o.pd_op.conv2d.41.0_splitncnn_2 p2o.pd_op.pool2d.1.0 0=1 4=1
+Convolution      Conv.55                  1 1 p2o.pd_op.pool2d.1.0 p2o.pd_op.conv2d.42.0 0=16 1=1 11=1 2=1 12=1 3=1 13=1 4=0 14=0 15=0 16=0 5=1 6=1024
+ReLU             Relu.10                  1 1 p2o.pd_op.conv2d.42.0 p2o.pd_op.relu.10.0
+Convolution      Conv.56                  1 1 p2o.pd_op.relu.10.0 p2o.pd_op.conv2d.43.0 0=64 1=1 11=1 2=1 12=1 3=1 13=1 4=0 14=0 15=0 16=0 5=1 6=1024
+HardSigmoid      HardSigmoid.5            1 1 p2o.pd_op.conv2d.43.0 p2o.pd_op.hardsigmoid.5.0 0=2.000000e-01 1=5.000000e-01
+BinaryOp         Mul.49                   2 1 p2o.pd_op.conv2d.41.0_splitncnn_1 p2o.pd_op.hardsigmoid.5.0 Mul.50 0=2
+BinaryOp         Add.158                  2 1 p2o.pd_op.conv2d.41.0_splitncnn_0 Mul.50 Add.159 0=0
+Split            splitncnn_33             1 2 Add.159 Add.159_splitncnn_0 Add.159_splitncnn_1
+Convolution      Conv.57                  1 1 Add.121_splitncnn_0 p2o.pd_op.conv2d.44.0 0=64 1=1 11=1 2=1 12=1 3=1 13=1 4=0 14=0 15=0 16=0 5=0 6=4096
+Split            splitncnn_34             1 3 p2o.pd_op.conv2d.44.0 p2o.pd_op.conv2d.44.0_splitncnn_0 p2o.pd_op.conv2d.44.0_splitncnn_1 p2o.pd_op.conv2d.44.0_splitncnn_2
+Pooling          GlobalAveragePool.1      1 1 p2o.pd_op.conv2d.44.0_splitncnn_2 p2o.pd_op.pool2d.2.0 0=1 4=1
+Convolution      Conv.58                  1 1 p2o.pd_op.pool2d.2.0 p2o.pd_op.conv2d.45.0 0=16 1=1 11=1 2=1 12=1 3=1 13=1 4=0 14=0 15=0 16=0 5=1 6=1024
+ReLU             Relu.11                  1 1 p2o.pd_op.conv2d.45.0 p2o.pd_op.relu.11.0
+Convolution      Conv.59                  1 1 p2o.pd_op.relu.11.0 p2o.pd_op.conv2d.46.0 0=64 1=1 11=1 2=1 12=1 3=1 13=1 4=0 14=0 15=0 16=0 5=1 6=1024
+HardSigmoid      HardSigmoid.6            1 1 p2o.pd_op.conv2d.46.0 p2o.pd_op.hardsigmoid.6.0 0=2.000000e-01 1=5.000000e-01
+BinaryOp         Mul.51                   2 1 p2o.pd_op.conv2d.44.0_splitncnn_1 p2o.pd_op.hardsigmoid.6.0 Mul.52 0=2
+BinaryOp         Add.164                  2 1 p2o.pd_op.conv2d.44.0_splitncnn_0 Mul.52 Add.165 0=0
+Convolution      Conv.60                  1 1 Add.65_splitncnn_0 p2o.pd_op.conv2d.47.0 0=64 1=1 11=1 2=1 12=1 3=1 13=1 4=0 14=0 15=0 16=0 5=0 6=3072
+Split            splitncnn_35             1 3 p2o.pd_op.conv2d.47.0 p2o.pd_op.conv2d.47.0_splitncnn_0 p2o.pd_op.conv2d.47.0_splitncnn_1 p2o.pd_op.conv2d.47.0_splitncnn_2
+Pooling          GlobalAveragePool.2      1 1 p2o.pd_op.conv2d.47.0_splitncnn_2 p2o.pd_op.pool2d.3.0 0=1 4=1
+Convolution      Conv.61                  1 1 p2o.pd_op.pool2d.3.0 p2o.pd_op.conv2d.48.0 0=16 1=1 11=1 2=1 12=1 3=1 13=1 4=0 14=0 15=0 16=0 5=1 6=1024
+ReLU             Relu.12                  1 1 p2o.pd_op.conv2d.48.0 p2o.pd_op.relu.12.0
+Convolution      Conv.62                  1 1 p2o.pd_op.relu.12.0 p2o.pd_op.conv2d.49.0 0=64 1=1 11=1 2=1 12=1 3=1 13=1 4=0 14=0 15=0 16=0 5=1 6=1024
+HardSigmoid      HardSigmoid.7            1 1 p2o.pd_op.conv2d.49.0 p2o.pd_op.hardsigmoid.7.0 0=2.000000e-01 1=5.000000e-01
+BinaryOp         Mul.53                   2 1 p2o.pd_op.conv2d.47.0_splitncnn_1 p2o.pd_op.hardsigmoid.7.0 Mul.54 0=2
+BinaryOp         Add.170                  2 1 p2o.pd_op.conv2d.47.0_splitncnn_0 Mul.54 Add.171 0=0
+Convolution      Conv.63                  1 1 Add.33_splitncnn_0 p2o.pd_op.conv2d.50.0 0=64 1=1 11=1 2=1 12=1 3=1 13=1 4=0 14=0 15=0 16=0 5=0 6=2048
+Split            splitncnn_36             1 3 p2o.pd_op.conv2d.50.0 p2o.pd_op.conv2d.50.0_splitncnn_0 p2o.pd_op.conv2d.50.0_splitncnn_1 p2o.pd_op.conv2d.50.0_splitncnn_2
+Pooling          GlobalAveragePool.3      1 1 p2o.pd_op.conv2d.50.0_splitncnn_2 p2o.pd_op.pool2d.4.0 0=1 4=1
+Convolution      Conv.64                  1 1 p2o.pd_op.pool2d.4.0 p2o.pd_op.conv2d.51.0 0=16 1=1 11=1 2=1 12=1 3=1 13=1 4=0 14=0 15=0 16=0 5=1 6=1024
+ReLU             Relu.13                  1 1 p2o.pd_op.conv2d.51.0 p2o.pd_op.relu.13.0
+Convolution      Conv.65                  1 1 p2o.pd_op.relu.13.0 p2o.pd_op.conv2d.52.0 0=64 1=1 11=1 2=1 12=1 3=1 13=1 4=0 14=0 15=0 16=0 5=1 6=1024
+HardSigmoid      HardSigmoid.8            1 1 p2o.pd_op.conv2d.52.0 p2o.pd_op.hardsigmoid.8.0 0=2.000000e-01 1=5.000000e-01
+BinaryOp         Mul.55                   2 1 p2o.pd_op.conv2d.50.0_splitncnn_1 p2o.pd_op.hardsigmoid.8.0 Mul.56 0=2
+BinaryOp         Add.176                  2 1 p2o.pd_op.conv2d.50.0_splitncnn_0 Mul.56 Add.177 0=0
+Interp           Resize.0                 1 1 Add.159_splitncnn_1 p2o.pd_op.nearest_interp.0.0 0=1 1=2.000000e+00 2=2.000000e+00 3=0 4=0 6=0
+BinaryOp         Add.178                  2 1 Add.165 p2o.pd_op.nearest_interp.0.0 Add.179 0=0
+Split            splitncnn_37             1 2 Add.179 Add.179_splitncnn_0 Add.179_splitncnn_1
+Interp           Resize.1                 1 1 Add.179_splitncnn_1 p2o.pd_op.nearest_interp.1.0 0=1 1=2.000000e+00 2=2.000000e+00 3=0 4=0 6=0
+BinaryOp         Add.180                  2 1 Add.171 p2o.pd_op.nearest_interp.1.0 Add.181 0=0
+Split            splitncnn_38             1 2 Add.181 Add.181_splitncnn_0 Add.181_splitncnn_1
+Interp           Resize.2                 1 1 Add.181_splitncnn_1 p2o.pd_op.nearest_interp.2.0 0=1 1=2.000000e+00 2=2.000000e+00 3=0 4=0 6=0
+BinaryOp         Add.182                  2 1 Add.177 p2o.pd_op.nearest_interp.2.0 Add.183 0=0
+ConvolutionDepthWise Conv.66                  1 1 Add.159_splitncnn_0 p2o.pd_op.depthwise_conv2d.13.0 0=64 1=5 11=5 2=1 12=1 3=1 13=1 4=2 14=2 15=2 16=2 5=1 6=1600 7=64
+Convolution      Conv.67                  1 1 p2o.pd_op.depthwise_conv2d.13.0 p2o.pd_op.conv2d.53.0 0=16 1=1 11=1 2=1 12=1 3=1 13=1 4=0 14=0 15=0 16=0 5=0 6=1024
+Split            splitncnn_39             1 3 p2o.pd_op.conv2d.53.0 p2o.pd_op.conv2d.53.0_splitncnn_0 p2o.pd_op.conv2d.53.0_splitncnn_1 p2o.pd_op.conv2d.53.0_splitncnn_2
+Pooling          GlobalAveragePool.4      1 1 p2o.pd_op.conv2d.53.0_splitncnn_2 p2o.pd_op.pool2d.5.0 0=1 4=1
+Convolution      Conv.68                  1 1 p2o.pd_op.pool2d.5.0 p2o.pd_op.conv2d.54.0 0=4 1=1 11=1 2=1 12=1 3=1 13=1 4=0 14=0 15=0 16=0 5=1 6=64
+ReLU             Relu.14                  1 1 p2o.pd_op.conv2d.54.0 p2o.pd_op.relu.14.0
+Convolution      Conv.69                  1 1 p2o.pd_op.relu.14.0 p2o.pd_op.conv2d.55.0 0=16 1=1 11=1 2=1 12=1 3=1 13=1 4=0 14=0 15=0 16=0 5=1 6=64
+HardSigmoid      HardSigmoid.9            1 1 p2o.pd_op.conv2d.55.0 p2o.pd_op.hardsigmoid.9.0 0=2.000000e-01 1=5.000000e-01
+BinaryOp         Mul.57                   2 1 p2o.pd_op.conv2d.53.0_splitncnn_1 p2o.pd_op.hardsigmoid.9.0 Mul.58 0=2
+BinaryOp         Add.190                  2 1 p2o.pd_op.conv2d.53.0_splitncnn_0 Mul.58 Add.191 0=0
+ConvolutionDepthWise Conv.70                  1 1 Add.179_splitncnn_0 p2o.pd_op.depthwise_conv2d.14.0 0=64 1=5 11=5 2=1 12=1 3=1 13=1 4=2 14=2 15=2 16=2 5=1 6=1600 7=64
+Convolution      Conv.71                  1 1 p2o.pd_op.depthwise_conv2d.14.0 p2o.pd_op.conv2d.56.0 0=16 1=1 11=1 2=1 12=1 3=1 13=1 4=0 14=0 15=0 16=0 5=0 6=1024
+Split            splitncnn_40             1 3 p2o.pd_op.conv2d.56.0 p2o.pd_op.conv2d.56.0_splitncnn_0 p2o.pd_op.conv2d.56.0_splitncnn_1 p2o.pd_op.conv2d.56.0_splitncnn_2
+Pooling          GlobalAveragePool.5      1 1 p2o.pd_op.conv2d.56.0_splitncnn_2 p2o.pd_op.pool2d.6.0 0=1 4=1
+Convolution      Conv.72                  1 1 p2o.pd_op.pool2d.6.0 p2o.pd_op.conv2d.57.0 0=4 1=1 11=1 2=1 12=1 3=1 13=1 4=0 14=0 15=0 16=0 5=1 6=64
+ReLU             Relu.15                  1 1 p2o.pd_op.conv2d.57.0 p2o.pd_op.relu.15.0
+Convolution      Conv.73                  1 1 p2o.pd_op.relu.15.0 p2o.pd_op.conv2d.58.0 0=16 1=1 11=1 2=1 12=1 3=1 13=1 4=0 14=0 15=0 16=0 5=1 6=64
+HardSigmoid      HardSigmoid.10           1 1 p2o.pd_op.conv2d.58.0 p2o.pd_op.hardsigmoid.10.0 0=2.000000e-01 1=5.000000e-01
+BinaryOp         Mul.59                   2 1 p2o.pd_op.conv2d.56.0_splitncnn_1 p2o.pd_op.hardsigmoid.10.0 Mul.60 0=2
+BinaryOp         Add.198                  2 1 p2o.pd_op.conv2d.56.0_splitncnn_0 Mul.60 Add.199 0=0
+ConvolutionDepthWise Conv.74                  1 1 Add.181_splitncnn_0 p2o.pd_op.depthwise_conv2d.15.0 0=64 1=5 11=5 2=1 12=1 3=1 13=1 4=2 14=2 15=2 16=2 5=1 6=1600 7=64
+Convolution      Conv.75                  1 1 p2o.pd_op.depthwise_conv2d.15.0 p2o.pd_op.conv2d.59.0 0=16 1=1 11=1 2=1 12=1 3=1 13=1 4=0 14=0 15=0 16=0 5=0 6=1024
+Split            splitncnn_41             1 3 p2o.pd_op.conv2d.59.0 p2o.pd_op.conv2d.59.0_splitncnn_0 p2o.pd_op.conv2d.59.0_splitncnn_1 p2o.pd_op.conv2d.59.0_splitncnn_2
+Pooling          GlobalAveragePool.6      1 1 p2o.pd_op.conv2d.59.0_splitncnn_2 p2o.pd_op.pool2d.7.0 0=1 4=1
+Convolution      Conv.76                  1 1 p2o.pd_op.pool2d.7.0 p2o.pd_op.conv2d.60.0 0=4 1=1 11=1 2=1 12=1 3=1 13=1 4=0 14=0 15=0 16=0 5=1 6=64
+ReLU             Relu.16                  1 1 p2o.pd_op.conv2d.60.0 p2o.pd_op.relu.16.0
+Convolution      Conv.77                  1 1 p2o.pd_op.relu.16.0 p2o.pd_op.conv2d.61.0 0=16 1=1 11=1 2=1 12=1 3=1 13=1 4=0 14=0 15=0 16=0 5=1 6=64
+HardSigmoid      HardSigmoid.11           1 1 p2o.pd_op.conv2d.61.0 p2o.pd_op.hardsigmoid.11.0 0=2.000000e-01 1=5.000000e-01
+BinaryOp         Mul.61                   2 1 p2o.pd_op.conv2d.59.0_splitncnn_1 p2o.pd_op.hardsigmoid.11.0 Mul.62 0=2
+BinaryOp         Add.206                  2 1 p2o.pd_op.conv2d.59.0_splitncnn_0 Mul.62 Add.207 0=0
+ConvolutionDepthWise Conv.78                  1 1 Add.183 p2o.pd_op.depthwise_conv2d.16.0 0=64 1=5 11=5 2=1 12=1 3=1 13=1 4=2 14=2 15=2 16=2 5=1 6=1600 7=64
+Convolution      Conv.79                  1 1 p2o.pd_op.depthwise_conv2d.16.0 p2o.pd_op.conv2d.62.0 0=16 1=1 11=1 2=1 12=1 3=1 13=1 4=0 14=0 15=0 16=0 5=0 6=1024
+Split            splitncnn_42             1 3 p2o.pd_op.conv2d.62.0 p2o.pd_op.conv2d.62.0_splitncnn_0 p2o.pd_op.conv2d.62.0_splitncnn_1 p2o.pd_op.conv2d.62.0_splitncnn_2
+Pooling          GlobalAveragePool.7      1 1 p2o.pd_op.conv2d.62.0_splitncnn_2 p2o.pd_op.pool2d.8.0 0=1 4=1
+Convolution      Conv.80                  1 1 p2o.pd_op.pool2d.8.0 p2o.pd_op.conv2d.63.0 0=4 1=1 11=1 2=1 12=1 3=1 13=1 4=0 14=0 15=0 16=0 5=1 6=64
+ReLU             Relu.17                  1 1 p2o.pd_op.conv2d.63.0 p2o.pd_op.relu.17.0
+Convolution      Conv.81                  1 1 p2o.pd_op.relu.17.0 p2o.pd_op.conv2d.64.0 0=16 1=1 11=1 2=1 12=1 3=1 13=1 4=0 14=0 15=0 16=0 5=1 6=64
+HardSigmoid      HardSigmoid.12           1 1 p2o.pd_op.conv2d.64.0 p2o.pd_op.hardsigmoid.12.0 0=2.000000e-01 1=5.000000e-01
+BinaryOp         Mul.63                   2 1 p2o.pd_op.conv2d.62.0_splitncnn_1 p2o.pd_op.hardsigmoid.12.0 Mul.64 0=2
+BinaryOp         Add.214                  2 1 p2o.pd_op.conv2d.62.0_splitncnn_0 Mul.64 Add.215 0=0
+Interp           Resize.3                 1 1 Add.191 p2o.pd_op.nearest_interp.3.0 0=1 1=8.000000e+00 2=8.000000e+00 3=0 4=0 6=0
+Interp           Resize.4                 1 1 Add.199 p2o.pd_op.nearest_interp.4.0 0=1 1=4.000000e+00 2=4.000000e+00 3=0 4=0 6=0
+Interp           Resize.5                 1 1 Add.207 p2o.pd_op.nearest_interp.5.0 0=1 1=2.000000e+00 2=2.000000e+00 3=0 4=0 6=0
+Concat           Concat.2                 4 1 p2o.pd_op.nearest_interp.3.0 p2o.pd_op.nearest_interp.4.0 p2o.pd_op.nearest_interp.5.0 Add.215 Concat.3 0=0
+Convolution      Conv.82                  1 1 Concat.3 p2o.pd_op.conv2d.65.0 0=16 1=3 11=3 2=1 12=1 3=1 13=1 4=1 14=1 15=1 16=1 5=1 6=9216
+ReLU             Relu.18                  1 1 p2o.pd_op.conv2d.65.0 p2o.pd_op.relu.18.0
+Deconvolution    ConvTranspose.0          1 1 p2o.pd_op.relu.18.0 ConvTranspose.1 0=16 1=2 11=2 2=1 12=1 3=2 13=2 4=0 14=0 15=0 16=0 5=1 6=1024
+ReLU             Relu.19                  1 1 ConvTranspose.1 p2o.pd_op.relu.19.0
+Deconvolution    ConvTranspose.2          1 1 p2o.pd_op.relu.19.0 ConvTranspose.3 0=1 1=2 11=2 2=1 12=1 3=2 13=2 4=0 14=0 15=0 16=0 5=1 6=64
+Sigmoid          Sigmoid.0                1 1 ConvTranspose.3 fetch_name_0
